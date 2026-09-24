@@ -8,11 +8,11 @@
 
 当前首版执行边界以 [MVP 冻结单](docs/MVP-v0.1-FREEZE.md) 为准：只验收一个电梯行业公开网页问题的完整链路，暂不扩展小红书、更多平台或 UI 美化。
 
-准备发布到 GitHub 时，按[发布清单](docs/GITHUB-RELEASE.md)筛选脱敏文件；本目录尚未创建远程仓库，也不会把本机模型配置和网页正文提交出去。
+项目已发布到 [Winn-ZQ/agent-reach-lab](https://github.com/Winn-ZQ/agent-reach-lab)。按[发布清单](docs/GITHUB-RELEASE.md)筛选脱敏文件；本机模型配置、网页正文和模型原始响应不会提交。
 
 课程演示可直接使用[5 分钟演示脚本](docs/DEMO-SCRIPT.md)和[公开文件清单](docs/PUBLIC-FILE-MANIFEST.md)。
 
-可先查看 [三种状态的结果交付样例](docs/examples/app-research/index.html) 和 [样例说明](docs/examples/app-research/README.md)。App A 数据全部虚构，仅用于评审交付，不是实时应用或小红书实测。
+可先查看 [三种状态的结果交付样例](docs/examples/app-research/index.html)、[真实电梯验收结果展示页](web/result.html) 和 [样例说明](docs/examples/app-research/README.md)。App A 数据全部虚构，仅用于评审交付；电梯展示页使用真实脱敏验收摘要，不代表最终政策结论。
 
 ## 已完成
 
@@ -28,6 +28,7 @@
 - 首版电梯公开网页真实链路已执行：Qwen分析→一次修正→DeepSeek复核，共3次调用、已知59,679 Token。复核发现两处引用/表述边界问题，按修正上限停止，未宣称通过。[首版真实验收](runs/mvp-elevator-2026-09-24/RESULT.md)。
 - 同一案例随后又在独立的2次免费预算下完成 Qwen 修正→DeepSeek 再复核。复核发现范围、来源性质和补充资料问题，结果仍为 `revise`；复核目标已按新规则重新本地验证，未形成通过终稿。[跟进结果](runs/mvp-elevator-2026-09-24/FOLLOW-UP-RESULT.md) · [跟进计划](runs/mvp-elevator-2026-09-24/FOLLOW-UP.md)。
 - 针对复核提出的官方政策资料缺口，已新增5个政府来源并完成真实模型链路：Qwen分析/修正＋DeepSeek两轮复核，共5次调用。最终仍为 `revise / revision_limit`，主要问题是全国性外推和补贴适用范围不能由少数地方样本证明。[官方补充任务结果](runs/public-web-elevator-followup-2026-09-24/MODEL-RESULT.md)。
+- 已把上述真实验收结果整理为本机展示页：结论、证据片段、复核问题、Agent loop 和来源列表均绑定同一结果状态；页面本身不发起新的模型调用。[展示页代码](web/result.html)。
 
 - 已完成 Qwen3.8-Flash 与 DeepSeek-V4.1-Flash 的真实API连接测试：各1次，均返回预期内容，总计57 Token。这只是连通性验证，不是分析或复核质量评测。[真实调用记录](runs/model-smoke-2026-09-23/RESULT.md)。
 
@@ -40,7 +41,7 @@
 - 已完成真实原报告独立复核，以及人工错误样本的一次“复核→修正→再复核”循环；6 项控制器测试通过。详细边界见 [验收记录](runs/verification-summary.md)。
 - 已完成中国官网真实问题的补查循环：子助手要求追加资料，实际获取两份新网页后修正并再次通过；现有程序测试共 8 项通过。[本轮记录与最终报告](runs/kone-china-discovery/RESULT.md)。
 
-这是现有助手驱动的原型：Codex 负责选资料、分析、调用独立子助手与处理修正，本地命令负责获取、保存和循环状态控制。尚不是输入问题即可独立运行的应用。已增加 `loop.py` 和独立复核流程，详见 [WORKFLOW.md](WORKFLOW.md)。尚未完成多题质量评测，尚未接入小红书，尚未创建 GitHub 作品仓库。
+这是现有助手驱动的原型：Codex 负责选资料、分析、调用独立子助手与处理修正，本地命令负责获取、保存和循环状态控制。尚不是输入问题即可独立运行的通用应用。已增加 `loop.py` 和独立复核流程，详见 [WORKFLOW.md](WORKFLOW.md)。尚未完成多题质量评测，尚未接入小红书。
 
 ## 职责与数据流
 
