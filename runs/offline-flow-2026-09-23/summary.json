@@ -1,0 +1,90 @@
+[
+  {
+    "api_calls": 0,
+    "coverage": {
+      "answered": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ],
+      "omitted": [],
+      "unknown": [
+        "Q4"
+      ]
+    },
+    "execution_status": "stopped",
+    "output": "verified/budget-stop",
+    "response_provenance": "回放真实Qwen引用错误；剩余1次不够修正加再复核，停止。",
+    "review_status": "blocked_by_validation",
+    "revision": 0,
+    "scenario": "budget-stop",
+    "simulated_calls": 1,
+    "stop_reason": "budget_exhausted"
+  },
+  {
+    "api_calls": 0,
+    "coverage": {
+      "answered": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ],
+      "omitted": [],
+      "unknown": [
+        "Q4"
+      ]
+    },
+    "execution_status": "stopped",
+    "output": "verified/invalid-review",
+    "response_provenance": "初稿为人工修订模拟；复核回放上轮真实Qwen错误来源ID的pass。不得视为对这份修订稿的真实复核。",
+    "review_status": "invalid",
+    "revision": 0,
+    "scenario": "invalid-review",
+    "simulated_calls": 2,
+    "stop_reason": "invalid_review"
+  },
+  {
+    "api_calls": 0,
+    "coverage": {
+      "answered": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ],
+      "omitted": [],
+      "unknown": [
+        "Q4"
+      ]
+    },
+    "execution_status": "completed",
+    "output": "verified/quote-repair",
+    "response_provenance": "第1份草稿来自真实Qwen历史响应；修正稿与复核均为开发助手编写的模拟响应。",
+    "review_status": "passed",
+    "revision": 1,
+    "scenario": "quote-repair",
+    "simulated_calls": 3,
+    "stop_reason": "review_passed"
+  },
+  {
+    "api_calls": 0,
+    "coverage": {
+      "answered": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ],
+      "omitted": [],
+      "unknown": [
+        "Q4"
+      ]
+    },
+    "execution_status": "stopped",
+    "output": "verified/revision-limit",
+    "response_provenance": "全部为预设模拟，验证一次修正后仍不通过时停止。",
+    "review_status": "revise",
+    "revision": 1,
+    "scenario": "revision-limit",
+    "simulated_calls": 4,
+    "stop_reason": "revision_limit"
+  }
+]

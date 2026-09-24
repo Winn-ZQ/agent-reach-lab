@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>资料助手 · 本机工作台</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top"><div><span class="eyebrow">LOCAL RESEARCH WORKBENCH</span><h1>资料助手</h1><p>把资料、证据和复核放在同一个可追溯的任务里。</p></div><span class="local-badge">仅本机 · 网页采集</span></header>
+  <main class="layout">
+    <section class="intro panel"><div><span class="eyebrow">当前版本</span><h2>先从一条可检查的研究任务开始</h2><p>上方可以确认问题并获取公开网页；下方选择预设案例，观察“分析 → 检查 → 复核 → 修正”的离线流程。公开网页采集不调用模型，小红书尚未接入。</p></div><div class="flow"><span>资料</span><i>→</i><span>分析</span><i>→</i><span>复核</span><i>→</i><span>交付</span></div></section>
+    <section class="panel planner"><div class="section-head"><div><span class="eyebrow">任务输入 · 计划与获取</span><h2>先描述你要研究的问题</h2><p class="muted">先生成计划；确认后才会发起公开网页搜索和页面读取，不会登录、读取 Cookie 或调用模型。</p></div><span class="tag">模型调用 0 次</span></div><form id="plan-form"><label for="question">研究问题 <span class="required">必填</span></label><textarea id="question" maxlength="600" required placeholder="例如：比较三款跑步 App 的训练计划入口和用户反馈"></textarea><div class="form-grid"><label>地区（选填）<input id="region" maxlength="80" placeholder="例如：中国大陆"></label><label>时间范围（选填）<input id="period" maxlength="80" placeholder="例如：2026-01 至 2026-06"></label></div><fieldset><legend>希望使用的资料来源</legend><label class="check"><input type="checkbox" name="source" value="web" checked>公开网页</label><label class="check muted-check"><input type="checkbox" name="source" value="xhs" disabled>小红书 <small>尚未接入</small></label></fieldset><button class="primary" type="submit">生成研究计划预览</button></form><div id="plan-result" class="plan-result hidden"></div><div id="acquisition-result" class="plan-result hidden"></div></section>
+    <section class="grid"><div class="panel task-panel"><div class="section-head"><div><span class="eyebrow">新任务</span><h2>选择一个回放案例</h2></div><span id="quota" class="muted">正在检查预算…</span></div><div id="scenarios" class="scenario-list"></div><div id="notice" class="notice hidden"></div></div>
+      <aside class="panel guide"><span class="eyebrow">职责分工</span><h2>每一步由谁负责</h2><ol><li><b>程序</b><span>统计作者、检查引用和控制预算。</span></li><li><b>分析角色</b><span>根据证据回答问题，提出待验证假设。</span></li><li><b>复核角色</b><span>独立检查结论、样本范围和引用。</span></li><li><b>程序</b><span>决定通过、修正一次或停止。</span></li></ol><div class="callout">模型分析、自由研究和小红书接入尚未开放。</div></aside>
+    </section>
+    <section class="panel history"><div class="section-head"><div><span class="eyebrow">任务记录</span><h2>最近任务</h2></div><button id="refresh" class="ghost">刷新</button></div><div id="tasks" class="task-list"><p class="muted">还没有回放任务。</p></div></section>
+    <section class="panel history"><div class="section-head"><h2>公开网页采集记录</h2><button id="refresh-acquisitions" class="ghost">刷新采集记录</button></div><div id="acquisition-history"></div></section>
+    <section id="detail" class="panel detail hidden"></section>
+  </main>
+  <footer>资料助手 · 本机原型 · 回放结果明确标注，不冒充实时研究</footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

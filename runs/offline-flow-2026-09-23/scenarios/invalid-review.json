@@ -1,0 +1,297 @@
+{
+  "call_limit": 4,
+  "case": {
+    "disclosure": "全部 App A 功能、笔记、作者、日期及复核状态均为人工编写的演示数据。未搜索小红书，未调用模型 API，不代表真实产品或实际评测成绩。",
+    "id": "app-feedback",
+    "kind": "synthetic_fixture",
+    "questions": {
+      "Q1": "官方说明包含什么功能及条件？",
+      "Q2": "样本反馈中有哪些问题和相反体验？",
+      "Q3": "可以形成哪些待验证的改进假设？",
+      "Q4": "全部用户的实际问题发生率是多少？"
+    },
+    "sampling": {
+      "exclusion": "重复笔记、广告或转载已确认项、明显不相关内容；日期未知单列且不计入时间窗口统计",
+      "executed": false,
+      "inclusion": "训练计划的第一人称使用描述，正文可取得，落在模拟日期范围内",
+      "period": "模拟 2026-06-01 至 2026-08-31，采集时间不得替代发布日期",
+      "purpose": "整体训练计划体验，非单独收集负面评价",
+      "queries": [
+        "App A 训练计划",
+        "App A 训练计划 使用体验",
+        "App A 训练计划 好用",
+        "App A 训练计划 找不到"
+      ],
+      "sort": "模拟综合排序；真实任务必须记录后端实际支持和返回的排序，不能声称随机抽样"
+    },
+    "sources": [
+      {
+        "author": null,
+        "date_basis": "演示未提供",
+        "id": "S1",
+        "included": true,
+        "kind": "官方描述（虚构）",
+        "locator": "S1-P1",
+        "platform": "网页",
+        "published_at": null,
+        "quote": "可在训练页的计划入口创建 5 公里训练计划。可在计划设置中调整每周训练日。当前帮助说明未列出支持的地区和客户端版本。",
+        "source_id": "S1",
+        "status": "demo_available",
+        "title": "App A 帮助中心：训练计划",
+        "url": null
+      },
+      {
+        "author": "demo-author-a",
+        "date_basis": "虚构发布日期",
+        "id": "X1",
+        "included": true,
+        "kind": "用户表达（虚构）",
+        "locator": "X1-P1",
+        "platform": "小红书",
+        "published_at": "2026-07-02",
+        "quote": "我第一次用时在首页找了很久，后来才知道训练页里有计划入口。",
+        "source_id": "X1",
+        "status": "demo_available",
+        "title": "第一次找训练计划",
+        "url": null
+      },
+      {
+        "author": "demo-author-a",
+        "date_basis": "虚构发布日期",
+        "id": "X2",
+        "included": true,
+        "kind": "用户表达（虚构）",
+        "locator": "X2-P1",
+        "platform": "小红书",
+        "published_at": "2026-07-09",
+        "quote": "这周帮朋友找训练计划，还是需要解释一下入口在哪里。",
+        "source_id": "X2",
+        "status": "demo_available",
+        "title": "给朋友找入口",
+        "url": null
+      },
+      {
+        "author": "demo-author-b",
+        "date_basis": "虚构发布日期",
+        "id": "X3",
+        "included": true,
+        "kind": "用户表达（虚构）",
+        "locator": "X3-P1",
+        "platform": "小红书",
+        "published_at": "2026-07-15",
+        "quote": "按帮助说明改了训练日，过程挺顺利。计划入口也很快找到了。",
+        "source_id": "X3",
+        "status": "demo_available",
+        "title": "我的训练日设置",
+        "url": null
+      },
+      {
+        "author": "demo-author-c",
+        "date_basis": "虚构发布日期",
+        "id": "X4",
+        "included": true,
+        "kind": "用户表达（虚构）",
+        "locator": "X4-P1",
+        "platform": "小红书",
+        "published_at": "2026-08-03",
+        "quote": "我以为生成后就不能改每周训练日，所以重新建了一次计划。我用的版本没有记录。",
+        "source_id": "X4",
+        "status": "demo_available",
+        "title": "计划日期的困惑",
+        "url": null
+      },
+      {
+        "author": "demo-author-a",
+        "date_basis": "虚构发布日期",
+        "exclusion_reason": "与 X1 为同一笔记，去重，不重复保留原文",
+        "id": "X5",
+        "included": false,
+        "kind": "排除记录（虚构）",
+        "locator": null,
+        "platform": "小红书",
+        "published_at": "2026-07-02",
+        "quote": null,
+        "source_id": "X5",
+        "status": "excluded_duplicate",
+        "title": "重复出现的笔记 X1",
+        "url": null
+      },
+      {
+        "author": "demo-author-d",
+        "date_basis": "未知",
+        "exclusion_reason": "不能确认落在研究时间窗口，排除窗口计数",
+        "id": "X6",
+        "included": false,
+        "kind": "旁证（虚构）",
+        "locator": "X6-P1",
+        "platform": "小红书",
+        "published_at": null,
+        "quote": "很久以前试过训练计划，当时没看懂怎么调整。",
+        "source_id": "X6",
+        "status": "excluded_unknown_date",
+        "title": "日期未知的旧体验",
+        "url": null
+      }
+    ],
+    "stage": "analysis",
+    "task": "研究跑步 App A 的训练计划功能和使用体验，结合官网与小红书资料，提出有证据的改进假设。"
+  },
+  "mode": "offline_simulation",
+  "provenance": "初稿为人工修订模拟；复核回放上轮真实Qwen错误来源ID的pass。不得视为对这份修订稿的真实复核。",
+  "responses": [
+    {
+      "content": {
+        "answers": [
+          {
+            "question_id": "Q1",
+            "refs": [
+              {
+                "locator": "S1-P1",
+                "quote": "可在训练页的计划入口创建 5 公里训练计划。可在计划设置中调整每周训练日。当前帮助说明未列出支持的地区和客户端版本。",
+                "source_id": "S1"
+              }
+            ],
+            "status": "answered",
+            "text": "官方说明指出，用户可在训练页的计划入口创建5公里训练计划，并可在计划设置中调整每周训练日。此外，帮助说明未列出支持的地区和客户端版本。"
+          },
+          {
+            "question_id": "Q2",
+            "refs": [
+              {
+                "locator": "X1-P1",
+                "quote": "我第一次用时在首页找了很久，后来才知道训练页里有计划入口。",
+                "source_id": "X1"
+              },
+              {
+                "locator": "X2-P1",
+                "quote": "这周帮朋友找训练计划，还是需要解释一下入口在哪里。",
+                "source_id": "X2"
+              },
+              {
+                "locator": "X4-P1",
+                "quote": "我以为生成后就不能改每周训练日，所以重新建了一次计划。",
+                "source_id": "X4"
+              },
+              {
+                "locator": "X3-P1",
+                "quote": "按帮助说明改了训练日，过程挺顺利。计划入口也很快找到了。",
+                "source_id": "X3"
+              }
+            ],
+            "status": "answered",
+            "text": "本次虚构样本4条纳入笔记来自3名作者。X1和X2均来自同一作者，反映入口寻找困难；X4作者误以为训练日不能修改。X3作者表示顺利找到入口并成功修改，属于相反体验。同一笔记可归入多个主题，不把主题数相加当人数。"
+          },
+          {
+            "question_id": "Q3",
+            "refs": [
+              {
+                "locator": "X1-P1",
+                "quote": "我第一次用时在首页找了很久，后来才知道训练页里有计划入口。",
+                "source_id": "X1"
+              },
+              {
+                "locator": "X4-P1",
+                "quote": "我以为生成后就不能改每周训练日，所以重新建了一次计划",
+                "source_id": "X4"
+              }
+            ],
+            "status": "answered",
+            "text": "基于证据可形成两个待验证假设：1. 优化首页到训练计划的导航路径或增加显眼入口；2. 在计划创建/详情页明确提示“支持后期修改”，以减少重复创建行为。"
+          },
+          {
+            "question_id": "Q4",
+            "refs": [],
+            "status": "unknown",
+            "text": "无法计算全部用户的实际问题发生率。提供的数据为人工编写的演示样本（synthetic_fixture），且采样执行状态为 false，仅包含少量虚构笔记，不具备统计学代表性，不能推断总体比例。"
+          }
+        ],
+        "hypotheses": [
+          {
+            "alternative": "用户可能未阅读引导页或习惯从特定菜单进入，而非界面设计问题。",
+            "next_action": "进行可用性测试，观察新用户首次寻找计划入口的路径和耗时。",
+            "source_ids": [
+              "X1",
+              "X2"
+            ],
+            "text": "更清晰的入口提示可能降低首次寻找计划的耗时，效果尚待验证。"
+          },
+          {
+            "alternative": "用户可能因担心修改影响进度而选择重建，属于心理安全感问题而非功能认知问题。",
+            "next_action": "分析后台日志中“重建计划”与“修改计划”的操作频率对比，并进行用户访谈确认动机。",
+            "source_ids": [
+              "X4"
+            ],
+            "text": "说明计划支持修改并提示操作入口，可能减少不必要的重建，效果尚待验证。"
+          }
+        ],
+        "limitations": [
+          "功能和笔记均为人工编写的演示资料，未真实采集小红书。",
+          "仅有4条虚构笔记、3名作者，不能推断总体发生率。",
+          "地区与客户端版本未知；此稿由开发助手修订，用于离线程序验证，并非新增模型调用结果。"
+        ]
+      },
+      "stage": "analysis"
+    },
+    {
+      "content": {
+        "checks": [
+          {
+            "claim": "Q1回答准确引用了S1中关于创建5公里计划、调整训练日及未列出支持地区/版本的说明。",
+            "reason": "草稿文本与S1原文完全一致，无过度推断。",
+            "source_ids": [
+              "S1"
+            ],
+            "supported": true
+          },
+          {
+            "claim": "Q2总结的样本反馈（入口发现困难、修改认知偏差）及相反体验均有对应来源支持。",
+            "reason": "X1/X2支持入口难找，X4支持误以为不可改，X3支持顺利找到和修改，引用恰当。",
+            "source_ids": [
+              "X1",
+              "X2",
+              "X4",
+              "X3"
+            ],
+            "supported": true
+          },
+          {
+            "claim": "Q3提出的两个改进假设（优化导航、明确修改提示）基于用户痛点推导合理。",
+            "reason": "假设直接回应了X1反映的入口问题和X4反映的认知问题，逻辑成立。",
+            "source_ids": [
+              "X1",
+              "X4"
+            ],
+            "supported": true
+          },
+          {
+            "claim": "Q4判定为unknown，指出数据为演示样本且不具备统计代表性，无法计算总体发生率。",
+            "reason": "依据任务背景中的synthetic_fixture性质及采样执行状态false，拒绝进行统计学推断是正确的处理方式。",
+            "source_ids": [
+              "disclosure",
+              "sampling"
+            ],
+            "supported": true
+          },
+          {
+            "claim": "Hypotheses部分提供了替代解释和下一步行动建议。",
+            "reason": "替代解释（如习惯问题、心理安全感）增加了分析的深度，符合证据复核要求。",
+            "source_ids": [
+              "X1",
+              "X2",
+              "X4"
+            ],
+            "supported": true
+          }
+        ],
+        "issues": [],
+        "limitations": [
+          "所有结论仅适用于提供的虚构演示数据场景，不可推广至真实产品环境。",
+          "由于未调用外部工具，无法验证源数据的真实性或完整性，仅验证内部一致性。"
+        ],
+        "verdict": "pass"
+      },
+      "stage": "review"
+    }
+  ],
+  "run_date": "2026-09-23"
+}

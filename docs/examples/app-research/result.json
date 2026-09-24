@@ -1,0 +1,46 @@
+{
+  "schema_version": "result-demo/0.2",
+  "mode": "synthetic_demo",
+  "disclosure": "全部 App A 功能、笔记、作者、日期及复核状态均为人工编写的演示数据。未搜索小红书，未调用模型 API，不代表真实产品或实际评测成绩。",
+  "task": {
+    "id": "demo-app-a",
+    "input": "研究跑步 App A 的训练计划功能和使用体验，结合官网与小红书资料，提出有证据的改进假设。",
+    "scope": "演示范围：中文训练计划功能；社区样本模拟 2026-06-01 至 2026-08-31；不研究医疗效果、市场占比或商业优先级。",
+    "questions": ["Q1：官方说明包含什么功能及条件？", "Q2：样本反馈中有哪些问题和相反体验？", "Q3：可以形成哪些待验证的改进假设？", "Q4：全部用户的实际问题发生率是多少？"]
+  },
+  "sampling": {
+    "executed": false,
+    "purpose": "整体训练计划体验，非单独收集负面评价",
+    "queries": ["App A 训练计划", "App A 训练计划 使用体验", "App A 训练计划 好用", "App A 训练计划 找不到"],
+    "sort": "模拟综合排序；真实任务必须记录后端实际支持和返回的排序，不能声称随机抽样",
+    "period": "模拟 2026-06-01 至 2026-08-31，采集时间不得替代发布日期",
+    "inclusion": "训练计划的第一人称使用描述，正文可取得，落在模拟日期范围内",
+    "exclusion": "重复笔记、广告或转载已确认项、明显不相关内容；日期未知单列且不计入时间窗口统计",
+    "counts": {"candidate_notes": 6, "included_notes": 4, "included_authors": 3, "duplicate_notes": 1, "unknown_date_notes": 1},
+    "limits": "4 条笔记来自 3 名虚构作者，同一作者的多篇记录不当成多个用户。2 条提及入口难找，但均来自同一作者，不能称为多人共同问题。"
+  },
+  "sources": [
+    {"id":"S1","platform":"网页","kind":"官方描述（虚构）","title":"App A 帮助中心：训练计划","url":null,"author":null,"published_at":null,"date_basis":"演示未提供","status":"demo_available","included":true,"locator":"S1-P1","quote":"可在训练页的计划入口创建 5 公里训练计划。可在计划设置中调整每周训练日。当前帮助说明未列出支持的地区和客户端版本。"},
+    {"id":"X1","platform":"小红书","kind":"用户表达（虚构）","title":"第一次找训练计划","url":null,"author":"demo-author-a","published_at":"2026-07-02","date_basis":"虚构发布日期","status":"demo_available","included":true,"locator":"X1-P1","quote":"我第一次用时在首页找了很久，后来才知道训练页里有计划入口。"},
+    {"id":"X2","platform":"小红书","kind":"用户表达（虚构）","title":"给朋友找入口","url":null,"author":"demo-author-a","published_at":"2026-07-09","date_basis":"虚构发布日期","status":"demo_available","included":true,"locator":"X2-P1","quote":"这周帮朋友找训练计划，还是需要解释一下入口在哪里。"},
+    {"id":"X3","platform":"小红书","kind":"用户表达（虚构）","title":"我的训练日设置","url":null,"author":"demo-author-b","published_at":"2026-07-15","date_basis":"虚构发布日期","status":"demo_available","included":true,"locator":"X3-P1","quote":"按帮助说明改了训练日，过程挺顺利。计划入口也很快找到了。"},
+    {"id":"X4","platform":"小红书","kind":"用户表达（虚构）","title":"计划日期的困惑","url":null,"author":"demo-author-c","published_at":"2026-08-03","date_basis":"虚构发布日期","status":"demo_available","included":true,"locator":"X4-P1","quote":"我以为生成后就不能改每周训练日，所以重新建了一次计划。我用的版本没有记录。"},
+    {"id":"X5","platform":"小红书","kind":"排除记录（虚构）","title":"重复出现的笔记 X1","url":null,"author":"demo-author-a","published_at":"2026-07-02","date_basis":"虚构发布日期","status":"excluded_duplicate","included":false,"locator":null,"quote":null,"exclusion_reason":"与 X1 为同一笔记，去重，不重复保留原文"},
+    {"id":"X6","platform":"小红书","kind":"旁证（虚构）","title":"日期未知的旧体验","url":null,"author":"demo-author-d","published_at":null,"date_basis":"未知","status":"excluded_unknown_date","included":false,"locator":"X6-P1","quote":"很久以前试过训练计划，当时没看懂怎么调整。","exclusion_reason":"不能确认落在研究时间窗口，排除窗口计数"}
+  ],
+  "claims": [
+    {"id":"C1","question":"Q1","type":"官方描述","text":"演示帮助说明列有 5 公里训练计划及调整每周训练日的入口；适用地区和客户端版本未说明。","refs":["S1"],"limit":"只核对说明，不证明所有用户都能使用或实际效果。"},
+    {"id":"C2","question":"Q2","type":"样本观点","text":"本次虚构样本 4 条有效笔记、3 名作者。2 条提到入口难找，但来自同一作者；另 1 名作者表示顺利找到。","refs":["X1","X2","X3","X4"],"limit":"不能从笔记条数推算用户占比，也不能把同作者重复表达当独立佐证。"},
+    {"id":"C3","question":"Q2","type":"样本观点","text":"1 名作者误以为不能调整训练日；另 1 名作者表示调整顺利。说明与体验存在理解差异，尚不能归因于功能缺失。","refs":["S1","X3","X4"],"limit":"客户端版本未知，可能是旧版本、入口差异或理解偏差。"},
+    {"id":"C4","question":"Q4","type":"明确未知","text":"无法确认全部用户的问题发生率。检索样本不具备总体代表性，也没有产品行为数据。","refs":[],"limit":"明确未知不是已回答；无需继续换关键词追求一个没有依据的百分比。"}
+  ],
+  "hypotheses": [
+    {"id":"H1","question":"Q3","claim_ids":["C1","C2"],"feature":"训练计划入口","observation":"入口难找的两条表达来自同一作者，且存在相反体验。","hypothesis":"对首次使用者展示清晰的训练计划入口，可能减少寻找时间。","alternative":"个别用户导航习惯不同，现有入口未必需要全量改动。","next_action":"找不同经验的目标用户做首次找入口任务，记录完成率、耗时、误点路径；比较现有入口和引导方案。","success_measure":"事先约定完成率与耗时的有意义差异；本样例不填未经测试的改善百分比。","refs":["S1","X1","X2","X3"],"status":"待验证，不能直接排入开发优先级","owner":"","due_date":""},
+    {"id":"H2","question":"Q3","claim_ids":["C1","C3"],"feature":"调整训练日","observation":"帮助说明支持调整，但一名作者误以为不能调整，另一名体验顺利。","hypothesis":"在计划详情中说明训练日可调整并提供入口，可能减少重新建计划。","alternative":"反馈可能来自旧版本或不同客户端，需先核对版本。","next_action":"在当前客户端复现调整路径，确认版本差异；再访谈重新建计划的用户，验证原因。","success_measure":"先确认能复现的阻碍，再比较用户是否能独立完成调整；效果待测。","refs":["S1","X3","X4"],"status":"待验证，先核实版本","owner":"","due_date":""}
+  ],
+  "variants": [
+    {"id":"reviewed","label":"完整报告样式","execution_status":"completed","coverage_status":"partial","review_status":"passed","review_label":"模拟复核通过","draft_id":"demo-draft-1","evidence_set_id":"demo-evidence-1","claim_ids":["C1","C2","C3","C4"],"hypothesis_ids":["H1","H2"],"source_ids":["S1","X1","X2","X3","X4","X5","X6"],"coverage":{"answered":["Q1","Q2","Q3"],"unknown":["Q4"],"omitted":[]},"notice":"结构完整，范围部分完成：总体发生率未知。模拟复核通过仅表示该展示状态，不是实际子助手调用。","next_step":"先验证假设，不把样本直接转成开发优先级。"},
+    {"id":"missing-source","label":"小红书来源缺失","execution_status":"completed","coverage_status":"partial","review_status":"passed","review_label":"网页部分模拟复核通过","draft_id":"demo-draft-web-1","evidence_set_id":"demo-evidence-web-1","claim_ids":["C1","C4"],"hypothesis_ids":[],"source_ids":["S1"],"coverage":{"answered":["Q1"],"unknown":["Q2","Q3","Q4"],"omitted":[]},"notice":"模拟小红书无法访问。仅交付网页说明；未取得反馈，不能生成基于用户反馈的改进假设。","next_step":"在本机完成渠道配置后创建关联任务，补充小红书研究。"},
+    {"id":"review-failed","label":"复核服务失败","execution_status":"completed","coverage_status":"partial","review_status":"failed","review_label":"未复核草稿","draft_id":"demo-draft-1","evidence_set_id":"demo-evidence-1","claim_ids":["C1","C2","C3","C4"],"hypothesis_ids":["H1","H2"],"source_ids":["S1","X1","X2","X3","X4","X5","X6"],"coverage":{"answered":["Q1","Q2","Q3"],"unknown":["Q4"],"omitted":[]},"notice":"模拟复核服务超时，未取得有效复核结果。下列内容为未复核草稿，不能标为已通过。","next_step":"预算允许时，对相同稿件及证据重试复核；本展示页不发起实际调用。"}
+  ]
+}

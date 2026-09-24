@@ -1,0 +1,14 @@
+.venv/
+.tools/
+vendor/
+__pycache__/
+.env
+.env.*
+!.env.example
+.local/
+.DS_Store
+*cookies*
+*token*
+# 证据包可能包含整页网页正文；公开记录只保留脱敏说明和哈希。
+runs/**/analysis-input.json
+runs/**/sources/
