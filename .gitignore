@@ -12,3 +12,25 @@ __pycache__/
 # 证据包可能包含整页网页正文；公开记录只保留脱敏说明和哈希。
 runs/**/analysis-input.json
 runs/**/sources/
+# 运行时原始回放、请求响应和诊断文件；公开仓库只保留 RESULT/FINAL/MODEL-RESULT 摘要。
+runs/**/search.json
+runs/**/run.json
+runs/**/task.json
+runs/**/state.json
+runs/**/review-*.json
+runs/**/evidence-*.json
+runs/**/bundle-*.json
+runs/**/page-*.json
+runs/**/acquisition-summary.json
+runs/**/search.txt
+runs/**/request-*.json
+runs/**/response-*.txt
+runs/**/draft-*.json
+runs/**/report.md
+runs/**/result.json
+runs/**/summary*.json
+runs/**/preflight.json
+runs/**/mock-flow/
+runs/setup/
+config/model-trial.json
+*.command
