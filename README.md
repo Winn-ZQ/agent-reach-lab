@@ -19,7 +19,7 @@
 - 模型角色适配和持久预算已接入新流程，支持Qwen分析／修正＋DeepSeek复核；相关测试通过。首版电梯案例已真实执行3次调用，后续修正需新的、仅限该案例的免费预算。[适配与预算说明](docs/MODEL-GATEWAY.md) · [集成验收](runs/model-adapter-2026-09-23/RESULT.md)。
 - 本机研究工作台已完成并实际预览：案例选择、任务状态、证据详情、停止原因、Markdown／CSV导出、任务输入计划预览、公开网页获取、证据准备和会话保护已接通；离线回放与实时公开网页采集分开，网页采集和证据准备不调用模型。新增9项HTTP/UI测试，前端脚本语法检查通过。[工作台说明](docs/RESEARCH-WEB.md)。
 
-- 公开网页获取适配层已跑通：Exa via mcporter 的候选结果经安全解析、去重后，交给 Agent-Reach WebChannel / Jina Reader 保存逐页证据；命令入口和网页入口各完成一次电梯公开资料实跑，均取得3页，模型调用0次。证据准备还会校验正文哈希、来源编号和范围限制，角色交接预览会展示分析→复核→条件修正的输入输出契约；全套95项测试通过。[命令验收](runs/public-web-elevator-2026-09-23/RESULT.md) · [网页验收](runs/public-web-ui-2026-09-23/RESULT.md)。
+- 公开网页获取适配层已跑通：Exa via mcporter 的候选结果经安全解析、去重后，交给 Agent-Reach WebChannel / Jina Reader 保存逐页证据；命令入口和网页入口各完成一次电梯公开资料实跑，均取得3页，模型调用0次。证据准备还会校验正文哈希、来源编号和范围限制，角色交接预览会展示分析→复核→条件修正的输入输出契约；全套96项测试通过。[命令验收](runs/public-web-elevator-2026-09-23/RESULT.md) · [网页验收](runs/public-web-ui-2026-09-23/RESULT.md)。
 
 - 新增固定证据的离线调度：程序检查→独立复核→最多一次修正→再验证。旧真实错误已回放拦截，名额不足与修正上限能停止，相关43项测试通过（20项为新流程）。此次API调用0次，模拟通过不代表模型质量提高。[流程与运行说明](docs/RESEARCH-FLOW.md) · [四个分支验收](runs/offline-flow-2026-09-23/RESULT.md)。
 
@@ -36,7 +36,7 @@
 - 固定源码提交：a19a171fa980a0785849596492e0af4db800c82f（MIT）。源码位于忽略提交的 vendor/Agent-Reach。
 - `.tools` 本地安装 mcporter 0.13.13；config/mcporter.json 配置 Exa，不导入编辑器账户配置。
 - 真实搜索一次：返回 3 条通力资料；真实读取一篇官网；主助手完成带来源分析。
-- 运行证据：runs/setup/search.txt、kone.json、analysis.md；依赖清单：python-packages.txt。
+- 运行时原始证据和诊断文件保存在本机 Git 忽略目录；公开仓库只保留脱敏验收摘要，不提交网页全文、模型原始响应或本机配置。
 - 已完成真实原报告独立复核，以及人工错误样本的一次“复核→修正→再复核”循环；6 项控制器测试通过。详细边界见 [验收记录](runs/verification-summary.md)。
 - 已完成中国官网真实问题的补查循环：子助手要求追加资料，实际获取两份新网页后修正并再次通过；现有程序测试共 8 项通过。[本轮记录与最终报告](runs/kone-china-discovery/RESULT.md)。
 

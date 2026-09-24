@@ -2,7 +2,7 @@
 
 本次只读取已有本地文件，没有重新联网，也没有进行新的模型复核。
 
-- 本地文件：[runs/setup/kone.json](../../../runs/setup/kone.json)
+- 原始本地文件未随项目公开；仓库只保留下面的脱敏核对记录和哈希。
 - 历史来源：[KONE Predictive Maintenance](https://www.kone.com/global/en/service/kone-predictive-maintenance.html)
 - 历史采集时间：2026-09-22T07:59:08.217789+00:00；发布日期未知。
 - 原始获取状态：fetched_unverified。来源抓取成功并不意味着语义已复核。
