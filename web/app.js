@@ -45,6 +45,7 @@
   }
   async function openTask(id){try{await renderDetail(await api('/api/tasks/'+id));$('detail').scrollIntoView({behavior:'smooth',block:'start'})}catch(e){showNotice(e.message)}}
   async function bootstrap(){try{const d=await api('/api/bootstrap');csrf=d.csrf;renderScenarios(d.scenarios);$('quota').textContent=d.live_execution_enabled?'可执行':'真实调用未开放 · 预算需单独配置';await refresh();await refreshAcquisitions()}catch(e){showNotice(e.message)}}
+  const showcase=$('showcase-link'); if(showcase && sessionToken) showcase.href='/result?session='+encodeURIComponent(sessionToken);
   $('refresh-acquisitions').addEventListener('click',refreshAcquisitions);
   $('refresh').addEventListener('click',refresh);
   $('plan-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const sources=[...document.querySelectorAll('input[name="source"]:checked')].map(x=>x.value);renderPlan(await api('/api/plan-preview',{method:'POST',headers:{'Content-Type':'application/json','Origin':location.origin},body:JSON.stringify({question:$('question').value,region:$('region').value,period:$('period').value,sources})}))}catch(err){showNotice(err.message)}finally{button.disabled=false}});

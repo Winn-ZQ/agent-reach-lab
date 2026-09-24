@@ -349,19 +349,24 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
             query=parse_qs(urlsplit(self.path).query)
             query_session=query.get('session',[''])[0]
             root_token=(path=='/' and secrets.compare_digest(query_session,self.server.session))
-            if path in ('/app.js','/style.css'):
+            if path in ('/app.js','/style.css','/result.css'):
                 try:
                     self.send(200,(WEB/path[1:]).read_bytes(),'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
                 except OSError:
                     self.send(500,{'error':'静态资源不可用'})
                 return
-            if not self.authorized() and not root_token:
+            result_token=(path=='/result' and secrets.compare_digest(query_session,self.server.session))
+            if not self.authorized() and not root_token and not result_token:
                 self.send(403,{'error':'请从启动时提供的本机入口打开页面'});return
             try:
                 if path=='/':
                     page=(WEB/'index.html').read_text()
                     if root_token:
                         page=page.replace('<body>', '<body data-session='+json.dumps(self.server.session)+'>')
+                    self.send(200,page,'text/html; charset=utf-8');return
+                if path=='/result':
+                    page=(WEB/'result.html').read_text()
+                    page=page.replace('<body>', '<body data-session='+json.dumps(self.server.session)+'>')
                     self.send(200,page,'text/html; charset=utf-8');return
                 if path=='/api/bootstrap':
                     self.send(200,{'csrf':self.server.csrf,'scenarios':store.options(),'live_execution_enabled':False});return

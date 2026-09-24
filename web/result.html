@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>真实验收结果 · 资料助手</title>
+  <link rel="stylesheet" href="/result.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div class="hero-top"><span class="eyebrow">资料助手 · 结果交付</span><a class="back" href="/">返回工作台</a></div>
+      <div class="hero-grid">
+        <div>
+          <div class="badge-row"><span class="badge badge-blue">真实模型验收</span><span class="badge badge-amber">带限制草稿</span></div>
+          <h1>补充核对老旧住宅电梯更新补贴、资金来源、适用地区和政策日期</h1>
+          <p class="lead">这是一份真实跑过“分析 → 独立复核 → 修正 → 再复核”的结果。复核发现了地区外推和政策日期边界问题，因此系统保留草稿并停止交付。</p>
+        </div>
+        <aside class="status-card">
+          <span class="eyebrow">最终状态</span>
+          <strong>revise</strong>
+          <span>stopped · revision_limit</span>
+          <small>不能作为最终政策结论</small>
+        </aside>
+      </div>
+    </header>
+
+    <section class="metric-grid" aria-label="任务指标">
+      <article class="metric"><span>证据来源</span><strong>5</strong><small>公开网页正文</small></article>
+      <article class="metric"><span>真实调用</span><strong>5</strong><small>Qwen 3 次 · DeepSeek 2 次</small></article>
+      <article class="metric"><span>已知用量</span><strong>100,629</strong><small>Token，未作为账单证明</small></article>
+      <article class="metric"><span>复核结论</span><strong>需修正</strong><small>修正上限已达到</small></article>
+    </section>
+
+    <div class="notice"><b>交付边界：</b>本页展示真实流程和真实复核发现，不宣称“90% 准确率”。公开网页正文已保存，但发布日期、地区和适用范围仍须按正式公文逐条核实。</div>
+
+    <main class="content-grid">
+      <section>
+        <div class="section-title"><span class="eyebrow">回答与证据</span><h2>当前可以支持的判断</h2></div>
+        <article class="finding">
+          <div class="finding-head"><span class="tag tag-fact">事实</span><span class="claim-id">C1 · S1</span></div>
+          <h3>国家层面的 2026 年政策通知把住宅老旧电梯更新纳入设备更新支持范围，并说明按电梯层（站）数实行差异化补贴。</h3>
+          <p>这说明存在国家层面的支持方向，但不能直接替代各地申报细则，也不能据此确定某个项目一定能获得补贴。</p>
+          <details><summary>查看证据片段</summary><blockquote>设备更新方面，将住宅老旧电梯更新由定额补贴调整为按电梯层（站）数分档差异化补贴。</blockquote><small>S1 · 中国政府网 · 正文已取得，发布日期和适用范围仍由复核保留核验要求</small></details>
+        </article>
+        <article class="finding">
+          <div class="finding-head"><span class="tag tag-fact">事实</span><span class="claim-id">C2 · S2</span></div>
+          <h3>2024 年政策解读说明超长期特别国债资金支持范围扩展到老旧电梯等设备更新领域。</h3>
+          <p>这份资料可以说明资金政策的历史背景，不能单独证明 2026 年某一地区的具体补贴金额。</p>
+          <details><summary>查看证据片段</summary><blockquote>将超长期特别国债支持范围扩大到能源电力、老旧电梯等领域设备更新。</blockquote><small>S2 · 中国政府网政策解读 · 2024-07-26 页面日期</small></details>
+        </article>
+        <article class="finding">
+          <div class="finding-head"><span class="tag tag-local">地方案例</span><span class="claim-id">C3 · S3/S4/S5</span></div>
+          <h3>南京、汕头和广州页面分别提供了地方申报或补助案例，但金额和条件只能在各自地区与政策年份内使用。</h3>
+          <p>地方资料能够补充“如何落地”的例子，不能合并成全国统一标准。</p>
+          <details><summary>查看证据边界</summary><blockquote>南京公告限定 2026 年南京项目；汕头通知限定当地申报；广州页面的 15 万元信息对应其页面所述年份，不能直接当作广州 2026 年标准。</blockquote><small>S3、S4、S5 · 地方政府公开网页</small></details>
+        </article>
+
+        <div class="section-title review-title"><span class="eyebrow">独立复核</span><h2>为什么没有显示“通过”</h2></div>
+        <article class="review-card">
+          <ul class="review-list">
+            <li><b>地区外推：</b>由南京、汕头两地推断“全国主要城市普遍采用 10/15/20 万分档”，证据不足。</li>
+            <li><b>年份混用：</b>广州 2025 年的 15 万元信息不能直接作为广州 2026 年适用标准。</li>
+            <li><b>概念混用：</b>“老旧小区加装电梯”和“老旧电梯更新”是否享受同等补贴，现有来源没有直接支持。</li>
+            <li><b>文书核验：</b>文号和政策范围可引用，但正式发布日期与生效状态仍需按官方公文核对。</li>
+          </ul>
+        </article>
+      </section>
+
+      <aside>
+        <div class="section-title"><span class="eyebrow">Agent loop</span><h2>本次实际经过的步骤</h2></div>
+        <ol class="timeline">
+          <li><b>证据准备</b><span>5 份公开网页正文进入同一证据包</span></li>
+          <li><b>Qwen 分析</b><span>生成带来源编号的初稿</span></li>
+          <li><b>本地校验</b><span>检查引用编号和引用片段</span></li>
+          <li><b>DeepSeek 复核</b><span>发现地区、日期和适用条件缺口</span></li>
+          <li><b>Qwen 修正</b><span>按复核意见修改一次</span></li>
+          <li><b>DeepSeek 再复核</b><span>仍返回 revise，达到修正上限后停止</span></li>
+        </ol>
+        <div class="side-box"><b>程序负责什么？</b><p>程序绑定证据版本、检查引用、控制调用预算并决定通过、修正或停止。模型不能自行扩大地区、日期或来源范围。</p></div>
+        <div class="side-box"><b>可以交付什么？</b><p>带限制的研究草稿、证据来源和待核实清单。不能把它当作全国政策结论。</p></div>
+      </aside>
+    </main>
+
+    <section class="sources">
+      <div class="section-title"><span class="eyebrow">Evidence set</span><h2>资料包中的来源</h2></div>
+      <div class="source-list">
+        <a class="source" href="http://big5.www.gov.cn/gate/big5/www.gov.cn/lianbo/202512/content_7053221.htm" target="_blank" rel="noreferrer"><span class="source-id">S1</span><div><b>2026 年大规模设备更新和消费品以旧换新政策通知</b><small>中国政府网 · 国家层面 · 正文已取得</small></div><span class="arrow">↗</span></a>
+        <a class="source" href="https://www.gov.cn/zhengce/202407/content_6964520.htm" target="_blank" rel="noreferrer"><span class="source-id">S2</span><div><b>超长期特别国债资金支持大规模设备更新政策解读</b><small>中国政府网 · 2024-07-26 · 背景资料</small></div><span class="arrow">↗</span></a>
+        <a class="source" href="https://fcj.nanjing.gov.cn/dtxx/tzgg/202605/t20260520_5842923.html" target="_blank" rel="noreferrer"><span class="source-id">S3</span><div><b>2026 年南京市住宅老旧电梯更新公告</b><small>南京市住房保障和房产局 · 地方案例</small></div><span class="arrow">↗</span></a>
+        <a class="source" href="https://www.shantou.gov.cn/zjj/zwgk/wjtz/content/post_2509950.html" target="_blank" rel="noreferrer"><span class="source-id">S4</span><div><b>汕头市 2026 年住宅老旧电梯更新申报通知</b><small>汕头市住房和城乡建设局 · 地方案例</small></div><span class="arrow">↗</span></a>
+        <a class="source" href="https://www.gz.gov.cn/zwfw/zxfw/ggfw/content/post_10118939.html" target="_blank" rel="noreferrer"><span class="source-id">S5</span><div><b>更换老旧电梯每台补贴 15 万元</b><small>广州市人民政府门户网站 · 年份需核对</small></div><span class="arrow">↗</span></a>
+      </div>
+    </section>
+
+    <footer>资料助手 · 真实验收展示 · 结果状态与证据包绑定 · 页面本身不发起新的模型调用</footer>
+  </div>
+</body>
+</html>
