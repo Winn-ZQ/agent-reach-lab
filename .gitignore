@@ -31,6 +31,13 @@ runs/**/result.json
 runs/**/summary*.json
 runs/**/preflight.json
 runs/**/mock-flow/
+runs/**/fixture-loop/
+runs/**/model-trial-inputs-v1/
+runs/**/acquisition-failures/*.json
+runs/**/fixture-review-*.json
+runs/**/draft-*.md
+runs/**/evidence.json
+runs/**/*.result.json
 runs/setup/
 config/model-trial.json
 *.command
