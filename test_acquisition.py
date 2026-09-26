@@ -73,6 +73,18 @@ class AcquisitionTests(unittest.TestCase):
         self.assertEqual((result['status'], calls), ('needs_user', 1))
         self.assertEqual(result['content'], '')
 
+    def test_browser_challenge_is_excluded_without_retry(self):
+        body='Title: Client Challenge\nMarkdown Content:\nA required part of this site couldn’t load. Please check your connection.'
+        result,calls=self.run_case([body])
+        self.assertEqual((result['status'],result['error']['kind'],calls),('needs_user','access_required',1))
+        self.assertEqual(result['content'],'')
+        self.assertNotIn('content_sha256',result)
+
+    def test_article_quoting_challenge_message_is_not_excluded(self):
+        body='Title: Troubleshooting browsers\nMarkdown Content:\nA required part of this site couldn’t load. This means a browser challenge failed.'
+        result,calls=self.run_case([body])
+        self.assertEqual((result['status'],calls),('fetched_unverified',1))
+
     def test_network_error_not_platform_judgment(self):
         result, calls = self.run_case([URLError('DNS failure')])
         self.assertEqual((result['error']['kind'],calls), ('network_error',1))

@@ -37,7 +37,7 @@ class ResearchEvidenceTests(unittest.TestCase):
             self.assertEqual(package['analysis_status'], 'not_run')
             self.assertEqual([s['source_id'] for s in package['case']['sources']], ['S1', 'S2', 'S3'])
             self.assertEqual(package['case']['web_context']['region'], '中国大陆')
-            self.assertIn('发布日期', package['case']['web_context']['limitations'][2])
+            self.assertTrue(any('发布日期' in text for text in package['case']['web_context']['limitations']))
             self.assertEqual(verify_package(root, package)['kind'], 'collected_public_web')
             preview = handoff_preview({'status': 'prepared', **package,
                                       'preflight': {'budget_status': 'new_budget_required'}})
@@ -50,12 +50,12 @@ class ResearchEvidenceTests(unittest.TestCase):
     def test_question_checklist_keeps_separate_conditions_and_full_tail(self):
         q='某App如何离线？哪些设备或套餐可用，哪些操作需要联网？请区分官方说明和未知。'
         questions=question_checklist(q)
-        self.assertEqual(len(questions),5)
+        self.assertEqual(len(questions),3)
         self.assertEqual(questions['Q2'],'哪些设备或套餐可用')
-        self.assertEqual(questions['Q3'],'哪些操作需要联网？')
+        self.assertEqual(questions['Q3'],'哪些操作需要联网？ 请区分官方说明和未知。')
         long_question=''.join(f'问题{i}？' for i in range(15))
         result=question_checklist(long_question)
-        self.assertEqual(len(result),9)
+        self.assertEqual(len(result),8)
         self.assertTrue(all(f'问题{i}？' in ' '.join(result.values()) for i in range(15)))
 
     def test_legacy_packages_keep_hash_while_new_packages_split_questions(self):
@@ -66,11 +66,37 @@ class ResearchEvidenceTests(unittest.TestCase):
             task_path.write_text(json.dumps(task))
             old=build_evidence(root,'evidence-package/0.1')
             self.assertEqual(len(verify_package(root,old)['questions']),2)
+            v2=build_evidence(root,'evidence-package/0.2')
+            self.assertEqual(len(verify_package(root,v2)['questions']),3)
+            self.assertIn('地区、日期',v2['case']['questions']['Q3'])
             new=build_evidence(root)
-            self.assertEqual(len(verify_package(root,new)['questions']),3)
+            self.assertEqual(len(verify_package(root,new)['questions']),2)
             self.assertNotEqual(old['case_sha256'],new['case_sha256'])
             self.assertEqual(old,build_evidence(root,'evidence-package/0.1'))
+            self.assertEqual(v2,build_evidence(root,'evidence-package/0.2'))
             with self.assertRaises(ValueError):build_evidence(root,'unknown-version')
+        finally:temp.cleanup()
+
+    def test_task_requirements_survive_without_invented_scope_question(self):
+        text='用户设置如何生效？哪些例外会改变优先级？请注明来源。'
+        result=question_checklist(text)
+        self.assertEqual(len(result),2)
+        self.assertIn('哪些例外会改变优先级？',result['Q2'])
+        self.assertIn('请注明来源。',result['Q2'])
+        self.assertNotIn('地区',''.join(result.values()))
+        explicit=question_checklist('2026年上海哪些电梯补贴有效？日期和申请地区有哪些限制？')
+        self.assertIn('日期和申请地区有哪些限制？',explicit.values())
+        self.assertEqual(question_checklist('请区分官方支持与社区推测。'),{'Q1':'请区分官方支持与社区推测。'})
+
+    def test_unscoped_task_does_not_require_geographic_disclosure(self):
+        temp,root=self.make_fixture()
+        try:
+            path=root/'run.json';task=json.loads(path.read_text())
+            task['input'].update(region='',period='',question='用户设置如何生效？')
+            path.write_text(json.dumps(task))
+            case=build_evidence(root)['case']
+            self.assertEqual(case['questions'],{'Q1':'用户设置如何生效？'})
+            self.assertFalse(any('地区' in x for x in case['web_context']['limitations']))
         finally:temp.cleanup()
 
     def test_changed_body_hash_blocks_analysis_input(self):

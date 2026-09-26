@@ -11,7 +11,7 @@ from model_gateway import checked_grant
 
 ROLES = dict(analysis=MODELS[0], repair=MODELS[0], review=MODELS[1])
 DAILY_BASE_CALLS = 12
-DAILY_CALL_LIMIT = 52  # 收尾保留旧预留，并为下一次完整网页任务留出空间；不清空旧账本。
+DAILY_CALL_LIMIT = 64  # 质量改进阶段：双提示词对照、旧例回归、新题各有界执行；旧账本不变。
 MAX_TASK_CALLS = 5
 
 
@@ -91,7 +91,7 @@ class WebBudget:
                     'task_id':task_id, 'settled':False,
                     'budget_policy':'bounded_adaptive', 'daily_call_limit':daily_limit,
                     'transport_mode':transport_mode,
-                    'adjustment_reason':'按本任务阶段预留完整步骤，基础12、每次增加4、当前收尾阶段上限52；旧占用保留。'}
+                    'adjustment_reason':'按本任务阶段预留完整步骤，基础12、每次增加4、当前质量改进阶段上限64；旧占用保留。'}
         grant={'approved':True,'free_only':True,'paid_calls_authorized':False,
                'grant_id':'web-'+task_id,'case_sha256':case_hash,
                'authorization_note':'用户已授权网页提交研究及合理范围模型调用；仅在已核对免费额度内执行。',

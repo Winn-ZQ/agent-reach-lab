@@ -42,6 +42,9 @@ def validate_content(content):
     # 某些站点沿用正常标题、HTTP 200，却只返回缺页外壳。
     # 仅拒绝明确缺页双标记且无其他正文的模板，正常文章讨论404不受影响。
     body = content.partition('Markdown Content:')[2]
+    if (title and re.fullmatch(r'client challenge', title[1].strip(), re.I)
+            and 'A required part of this site couldn’t load.' in body):
+        raise AcquisitionError('access_required', '读取到浏览器验证提示，未取得目标正文。')
     if 'Markdown Content:' in content and not body.strip():
         raise AcquisitionError('empty', '读取器只返回页面标题，正文为空。')
     if (re.search(r'^#\s+Page not found\.?\s*$',body,re.M|re.I)
