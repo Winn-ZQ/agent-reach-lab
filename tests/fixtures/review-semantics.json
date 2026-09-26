@@ -1,0 +1,165 @@
+{
+  "schema_version": "review-benchmark/0.1",
+  "provenance": "全部为虚构对照资料，由本项目助手根据已出现的错误类型编写；不是新的真实用户样本。",
+  "sources": [
+    {
+      "source_id": "S1",
+      "quote": "离线笔记X支持在桌面和手机应用中离线查看与编辑已下载页面。网页浏览器不支持离线使用。多人离线修改同一非文本属性时可能发生冲突，最终只保留其中一个更新。",
+      "locator": "虚构说明1"
+    },
+    {
+      "source_id": "S2",
+      "quote": "离线下载设置在每台设备上单独配置。在手机上下载页面，不会自动使电脑获得该页面的离线副本。页面内容的离线修改会在重新联网后同步。",
+      "locator": "虚构说明2"
+    },
+    {
+      "source_id": "S3",
+      "quote": "离线笔记X有免费版、Plus版、商业版和企业版四种套餐。所有套餐均可手动下载单个页面。Plus版、商业版和企业版可以自动下载最近访问的页面。",
+      "locator": "虚构说明3"
+    },
+    {
+      "source_id": "S4",
+      "quote": "离线\n选择要下载的页面\n自动下载最近访问的页面\n自动下载最近访问的页面\n自动下载最近访问的页面",
+      "locator": "虚构扁平价格片段",
+      "published_at": null
+    }
+  ],
+  "groups": [
+    {
+      "id": "Q1",
+      "category": "联网条件混淆",
+      "claims": [
+        {
+          "id": "Q1:C1",
+          "text": "桌面应用支持离线编辑已下载页面。",
+          "expected_supported": true
+        },
+        {
+          "id": "Q1:C2",
+          "text": "非文本编辑冲突必须联网才能解决。",
+          "expected_supported": false
+        }
+      ],
+      "scoring_rationale": "风险描述没有给出解决冲突的必要联网条件。",
+      "source_ids": [
+        "S1"
+      ]
+    },
+    {
+      "id": "Q2",
+      "category": "合理风险表述",
+      "claims": [
+        {
+          "id": "Q2:C1",
+          "text": "多人离线修改同一非文本属性可能冲突。",
+          "expected_supported": true
+        },
+        {
+          "id": "Q2:C2",
+          "text": "这些资料没有说明解决此冲突必须联网。",
+          "expected_supported": true
+        }
+      ],
+      "scoring_rationale": "分别忠于风险和证据缺口，不把风险推成必要条件。",
+      "source_ids": [
+        "S1"
+      ]
+    },
+    {
+      "id": "Q3",
+      "category": "下载设置与同步混淆",
+      "claims": [
+        {
+          "id": "Q3:C1",
+          "text": "手机的离线下载设置不会自动给电脑生成离线副本。",
+          "expected_supported": true
+        },
+        {
+          "id": "Q3:C2",
+          "text": "因此页面内容不能在设备间同步。",
+          "expected_supported": false
+        }
+      ],
+      "scoring_rationale": "离线副本设置与联网后内容同步不同，后半段还与S2冲突。",
+      "source_ids": [
+        "S2"
+      ]
+    },
+    {
+      "id": "Q4",
+      "category": "正确区分两种同步",
+      "claims": [
+        {
+          "id": "Q4:C1",
+          "text": "离线下载设置需在每台设备分别配置。",
+          "expected_supported": true
+        },
+        {
+          "id": "Q4:C2",
+          "text": "离线修改的页面内容会在重新联网后同步。",
+          "expected_supported": true
+        }
+      ],
+      "scoring_rationale": "两条均有明确证据，不能因为设置独立否定内容同步。",
+      "source_ids": [
+        "S2"
+      ]
+    },
+    {
+      "id": "Q5",
+      "category": "合理推论",
+      "claims": [
+        {
+          "id": "Q5:C1",
+          "text": "根据所有套餐可手动下载及免费版是套餐之一，可推得免费版支持手动下载单页。",
+          "expected_supported": true
+        }
+      ],
+      "scoring_rationale": "全称命题和已知子集的有效推论，不要求相同字面句子。",
+      "source_ids": [
+        "S3"
+      ]
+    },
+    {
+      "id": "Q6",
+      "category": "扁平表格误读",
+      "claims": [
+        {
+          "id": "Q6:C1",
+          "text": "扁平价格片段显示免费版也有自动下载的勾选，因此免费版支持自动下载。",
+          "expected_supported": false
+        }
+      ],
+      "scoring_rationale": "S4没有勾选或可还原的列归属，不能恢复未保存的视觉信息。",
+      "source_ids": [
+        "S4"
+      ]
+    },
+    {
+      "id": "Q7",
+      "category": "合理未知",
+      "claims": [
+        {
+          "id": "Q7:C1",
+          "text": "提供的正文没有给出离线功能的发布日期，因此发布日期仍未确认。",
+          "expected_supported": true
+        }
+      ],
+      "scoring_rationale": "限定于所给正文的未知，不断言平台从未公布。",
+      "source_ids": []
+    },
+    {
+      "id": "Q8",
+      "category": "元数据过度外推",
+      "claims": [
+        {
+          "id": "Q8:C1",
+          "text": "published_at为null证明厂商从未公布该功能的发布日期。",
+          "expected_supported": false
+        }
+      ],
+      "scoring_rationale": "元数据未核实不证明外部世界从未发布。",
+      "source_ids": []
+    }
+  ]
+}

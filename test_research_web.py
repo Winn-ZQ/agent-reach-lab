@@ -14,7 +14,7 @@ from research_web import make_server
 class WebTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.server = make_server(Path(self.temp.name)/'runs', 0)
+        self.server = make_server(Path(self.temp.name)/'.local'/'runs', 0)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True); self.thread.start()
         self.base = f'http://{self.server.host}'
         c = http.client.HTTPConnection(self.server.host)

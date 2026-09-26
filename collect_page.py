@@ -39,6 +39,20 @@ def validate_content(content):
     title = re.search(r'^Title:\s*(.*)$', header, re.M)
     if title and re.fullmatch(r'(?:404(?:\s*[-:|]\s*|\s+))?(?:page not found|not found)|页面不存在|页面未找到', title[1].strip(), re.I):
         raise AcquisitionError('not_found', '读取到页面不存在提示，未取得目标资料。')
+    # 某些站点沿用正常标题、HTTP 200，却只返回缺页外壳。
+    # 仅拒绝明确缺页双标记且无其他正文的模板，正常文章讨论404不受影响。
+    body = content.partition('Markdown Content:')[2]
+    if 'Markdown Content:' in content and not body.strip():
+        raise AcquisitionError('empty', '读取器只返回页面标题，正文为空。')
+    if (re.search(r'^#\s+Page not found\.?\s*$',body,re.M|re.I)
+            and re.search(r'This page may be private\. You may be able to view it by',body,re.I)):
+        raise AcquisitionError('not_found', '页面返回缺页提示及登录说明，未取得目标正文。')
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    text_lines = [line for line in lines if not re.fullmatch(r'(?:!?\[.*\]\([^)]+\))+', line)]
+    normalized = [line.casefold().strip('# *') for line in text_lines]
+    if (normalized[:2] == ['not found', 'this page does not exist']
+            and all(line in ('interactive graph', 'on this page') for line in normalized[2:])):
+        raise AcquisitionError('not_found', '页面只返回不存在提示，未取得目标资料。')
     if title and re.fullmatch(r'log\s*in|sign\s*in|登录|用户登录|just a moment\.\.\.', title[1].strip(), re.I):
         raise AcquisitionError('access_required', '读取到登录或验证页面，需要在本机处理。')
     if re.search(r'^Warning:.*(?:requiring captcha|requires authentication)', header, re.M | re.I):

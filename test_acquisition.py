@@ -39,6 +39,35 @@ class AcquisitionTests(unittest.TestCase):
         result, calls = self.run_case(['Title: Error\nWarning: Target URL returned error 404: Not Found\nMarkdown Content:\nmissing'])
         self.assertEqual((result['error']['kind'], calls), ('not_found', 1))
 
+    def test_soft_missing_page_with_normal_title_is_not_evidence(self):
+        content = ('Title: Product help\nMarkdown Content:\n'
+                   '[![Image](https://example.com/)](https://example.com/)\n'
+                   'Not found\nThis page does not exist\nInteractive graph\nOn this page\n'
+                   '[Powered by Example](https://example.com/)')
+        result, calls = self.run_case([content])
+        self.assertEqual((result['error']['kind'], calls), ('not_found', 1))
+        self.assertEqual(result['content'], '')
+        self.assertNotIn('content_sha256', result)
+
+    def test_article_explaining_missing_page_is_retained(self):
+        content = ('Title: Troubleshooting\nMarkdown Content:\nNot found\n'
+                   'This page does not exist\nThis message means your link is wrong; repair the URL.')
+        result, calls = self.run_case([content])
+        self.assertEqual((result['status'], calls), ('fetched_unverified', 1))
+        self.assertEqual(result['content'], content)
+
+    def test_reader_metadata_without_body_is_not_evidence(self):
+        content='Title: Useful official help\nURL Source: https://example.com/help\nMarkdown Content:\n\n'
+        result,calls=self.run_case([content])
+        self.assertEqual((result['error']['kind'],calls),('empty',1))
+        self.assertEqual(result['content'],'')
+
+    def test_missing_page_with_navigation_is_not_evidence(self):
+        content='Title: Product home\nMarkdown Content:\n### Features\n[Plans](https://example.com/)\n# Page not found.\nThis page may be private. You may be able to view it by [logging in](https://example.com/login).\n### Footer\n'
+        result,calls=self.run_case([content])
+        self.assertEqual((result['error']['kind'],calls),('not_found',1))
+        self.assertEqual(result['content'],'')
+
     def test_login_body(self):
         result, calls = self.run_case(['Title: Sign in\nMarkdown Content:\nPassword'])
         self.assertEqual((result['status'], calls), ('needs_user', 1))

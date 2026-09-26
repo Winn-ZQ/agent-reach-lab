@@ -1,0 +1,3 @@
+# 固定 Agent-Reach 源码，并沿用验证环境的运行依赖版本。
+-c constraints-tested.txt
+agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@a19a171fa980a0785849596492e0af4db800c82f

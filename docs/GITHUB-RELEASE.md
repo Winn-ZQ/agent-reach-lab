@@ -5,10 +5,12 @@
 ## 可以公开
 
 - `README.md`、`WORKFLOW.md`、`PRODUCT-NEXT.md`。
-- `docs/PRD-v0.2.md`、`docs/MVP-v0.1-FREEZE.md`、`docs/RESEARCH-FLOW.md`、`docs/RESEARCH-WEB.md`、`docs/MODEL-GATEWAY.md`。
-- `web/`、`research_*.py`、`run_research.py`、`run_followup.py`、`run_resume.py`及测试文件。
+- `docs/PRD-v0.3.md`及历史 PRD、`docs/MVP-v0.1-FREEZE.md`、`docs/RESEARCH-FLOW.md`、`docs/RESEARCH-WEB.md`、`docs/MODEL-GATEWAY.md`。
+- `prototypes/layout-comparison/`：独立交互草稿，须保留模拟标识与 README，不宣传为已接通的平台或真实任务结果。
+- `web/`（含方案 A 实施版）、`research_*.py`（含真实任务调度与预算）、`run_research.py`、`run_followup.py`、`run_resume.py`及测试文件。
 - `runs/**/RESULT.md`、`FOLLOW-UP-RESULT.md`和`MODEL-RESULT.md`等脱敏验收摘要。
 - `docs/examples/app-research/`中的虚构资料示例。
+- `review_benchmark.py`、`test_review_benchmark.py`、`tests/fixtures/review-semantics.json`及固定对照的脱敏总结；题集明确标为虚构，标准答案不发送给模型。
 
 ## 必须排除
 
@@ -19,22 +21,24 @@
 
 `.gitignore`已经加入证据包正文的排除规则；提交前仍要人工检查一次 `git diff --cached`。
 
-## 建议的首次提交顺序
+## 本轮更新的发布顺序
 
-1. 提交代码、测试、PRD、冻结单和脱敏结果摘要。
-2. 在干净环境执行 `python -m unittest -q`，确认不依赖 `.local/`。
+1. 先核对代码、测试、PRD、冻结单和脱敏结果摘要；用户已授权本轮收尾后提交并推送到既有仓库。
+2. 按 [QUICKSTART](QUICKSTART.md) 安装依赖，在不带原 `.local/` 的项目副本执行测试；项目副本测试与全新系统安装分开记录。
 3. 运行本机网页的离线回放，确认页面明确显示“回放／模拟”，不冒充实时研究。
 4. 在 README 中说明 Agent-Reach 固定提交、模型角色和免费调用限制。
-5. 创建 GitHub 仓库后再添加远程地址；不要把本机配置文件复制进仓库。
+5. 已有作品仓库；检查此次变更后再发布更新，不复制本机配置。
 
 ## README 演示路径
 
-课程演示建议按以下顺序：
+当前演示步骤以 [方案 A 的5分钟脚本](DEMO-SCRIPT.md) 为准。新界面点击一次开始后自动推进；旧版的计划预览、逐步获取和离线回放只在 `/legacy`，不要混用两套操作说明。
 
-1. 输入电梯行业公开问题，展示计划预览。
-2. 展示 Agent-Reach 读取公开网页和来源编号。
-3. 展示分析角色、独立复核角色、修正和停止原因。
-4. 打开[首版真实验收记录](../runs/mvp-elevator-2026-09-24/RESULT.md)与[官方补充任务结果](../runs/public-web-elevator-followup-2026-09-24/MODEL-RESULT.md)，说明真实结果仍为 `revise`。
-5. 最后展示虚构 App A 回放，说明 UI 和导出格式如何工作。
+发布说明应准确写明“公开网页已有一个真实闭环通过案例；跨关联任务完成，后续多题测试仍暴露质量问题，小红书未接入”。不得把单题通过描述为整体准确率。项目副本及macOS独立虚拟环境安装测试已通过，不能代替外部检索可用性、模型质量或其他系统兼容性验收。
 
-不要把一次电梯案例包装成准确率，也不要把免费额度页面截图当成 API 账单证明。
+本轮已完成的副本测试、首次启动修复与边界见 [2026-09-26检查记录](RELEASE-CHECK-2026-09-26.md)。本次按用户授权完成公开文件筛选及版本发布。
+
+本轮更新说明见 [RELEASE-NOTES-2026-09-26](RELEASE-NOTES-2026-09-26.md)，界面与候选文件检查见 [交付检查](DELIVERY-CHECK-2026-09-26.md)。
+
+本轮最终质量结论已归档：[阶段报告](STAGE-ACCEPTANCE-2026-09-26.md)。发布需保留“阶段执行完毕但质量未通过”，不能只展示通力通过例或程序测试数。
+
+最新交付状态、真实失败与程序检查见[最终交付报告](FINAL-DELIVERY-2026-09-26.md)。

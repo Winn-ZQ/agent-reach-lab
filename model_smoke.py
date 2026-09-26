@@ -12,6 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from configure_model import CONFIG, MODELS, PRIVATE, private_directory, validate_key
+from model_usage import numeric_usage
 
 PROMPT = '这是接口连通性测试。请只回复：连接成功'
 LEDGER = PRIVATE / 'model-smoke.jsonl'
@@ -39,15 +40,70 @@ class NoRedirect(HTTPRedirectHandler):
         return None  # 凭据绝不转发到重定向目标。
 
 
+def read_event_stream(response, response_limit, timeout, audit=None):
+    """只交付完整SSE；不输出中途文本，不把EOF当结束，不自动重发。"""
+    begun=time.monotonic(); size=0; events=0; first=None
+    data=[]; parts=[]; finish=None; usage=None
+    def note(complete=False):
+        if audit:
+            audit({'phase':'stream_read','http_status':response.status,'response_bytes':size,
+                   'stream_events':events,'first_event_seconds':first,'stream_complete':complete})
+    while True:
+        if time.monotonic()-begun>timeout: raise TimeoutError('stream deadline')
+        line=response.readline(response_limit-size+1)
+        size+=len(line)
+        if size>response_limit: raise ValueError('stream size limit')
+        if time.monotonic()-begun>timeout: raise TimeoutError('stream deadline')
+        if not line: raise ValueError('stream missing done')
+        line=line.decode('utf-8').rstrip('\r\n')
+        if line:
+            if line.startswith('data:'): data.append(line[5:].removeprefix(' '))
+            elif not line.startswith((':','event:','id:','retry:')): raise ValueError('stream framing')
+            continue
+        if not data: continue
+        payload='\n'.join(data);data=[];events+=1
+        if first is None:first=round(time.monotonic()-begun,3)
+        note()
+        if payload=='[DONE]':
+            if finish is None or usage is None: raise ValueError('stream incomplete or usage unknown')
+            note(True)
+            return {'choices':[{'index':0,'message':{'role':'assistant','content':''.join(parts)},
+                                'finish_reason':finish}], 'usage':usage}
+        chunk=json.loads(payload)
+        if not isinstance(chunk,dict) or chunk.get('error') or not isinstance(chunk.get('choices'),list):
+            raise ValueError('stream response schema')
+        if chunk.get('usage') is not None:
+            if usage is not None: raise ValueError('duplicate stream usage')
+            usage=numeric_usage(chunk['usage'])
+        if not chunk['choices']: continue
+        if len(chunk['choices'])!=1: raise ValueError('multiple stream choices')
+        choice=chunk['choices'][0]
+        if choice.get('index')!=0 or not isinstance(choice.get('delta'),dict): raise ValueError('stream choice schema')
+        delta=choice['delta'];content=delta.get('content')
+        if delta.get('tool_calls') or delta.get('function_call'): raise ValueError('unexpected stream tools')
+        if content is not None:
+            if not isinstance(content,str) or finish is not None and content: raise ValueError('stream content schema')
+            parts.append(content)
+        if choice.get('finish_reason') is not None:
+            if finish is not None: raise ValueError('duplicate stream finish')
+            finish=choice['finish_reason']
+
+
 def transport(config, body, timeout=30, response_limit=131072, audit=None):
     request = Request(config['base_url'] + '/chat/completions',
                       data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
                       headers={'Authorization': 'Bearer ' + config['api_key'],
                                'Content-Type': 'application/json'}, method='POST')
+    if audit: audit({'phase': 'request'})
     with build_opener(NoRedirect()).open(request, timeout=timeout) as response:
+        if audit: audit({'phase': 'response_read', 'http_status': response.status})
+        if body.get('stream') is True:
+            if 'text/event-stream' not in response.headers.get('Content-Type',''):
+                raise ValueError('expected event stream')
+            return read_event_stream(response,response_limit,timeout,audit)
         raw = response.read(response_limit + 1)
         if audit:
-            audit({'http_status': response.status, 'response_bytes': len(raw),
+            audit({'phase': 'response_decode', 'http_status': response.status, 'response_bytes': len(raw),
                    'body_sha256': hashlib.sha256(raw).hexdigest(),
                    'content_type_json': 'json' in response.headers.get('Content-Type', ''),
                    'body_kind': ('json' if raw.lstrip().startswith((b'{', b'[')) else

@@ -20,8 +20,19 @@ from collect_page import collect
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = ROOT / "config" / "mcporter.json"
-DEFAULT_MCporter = ROOT / ".tools" / "node_modules" / ".bin" / "mcporter"
-DEFAULT_NODE = Path("/Users/lzq/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node")
+
+
+def node_path():
+    """优先显式配置与 PATH；兼容本机 Codex 运行时，不依赖具体用户名。"""
+    explicit = os.environ.get("AGENT_REACH_NODE")
+    if explicit:
+        path = Path(explicit).expanduser()
+        return path if path.is_file() and os.access(path, os.X_OK) else None
+    found = shutil.which("node")
+    if found:
+        return Path(found)
+    bundled = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+    return bundled if bundled.is_file() and os.access(bundled, os.X_OK) else None
 
 
 class SearchError(RuntimeError):
@@ -128,10 +139,13 @@ def search_public_web(
                                              "numResults": max_results}, ensure_ascii=False),
                       "--timeout", str(timeout_ms), "--output", "json"]
     if runner is None:
+        if node_path() is None:
+            raise SearchError("not_configured", "Node 未安装；请配置 PATH 或 AGENT_REACH_NODE")
         runner = subprocess.run
     env = os.environ.copy()
-    node_parent = str(DEFAULT_NODE.parent)
-    if DEFAULT_NODE.exists() and node_parent not in env.get("PATH", "").split(os.pathsep):
+    node = node_path()
+    node_parent = str(node.parent) if node else None
+    if node_parent and node_parent not in env.get("PATH", "").split(os.pathsep):
         env["PATH"] = node_parent + os.pathsep + env.get("PATH", "")
     try:
         completed = runner(args, capture_output=True, text=True, timeout=timeout_ms / 1000,

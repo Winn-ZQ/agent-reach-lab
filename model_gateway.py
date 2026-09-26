@@ -8,8 +8,11 @@ import os
 from pathlib import Path
 import re
 import stat
+import socket
+import ssl
+from http.client import RemoteDisconnected, IncompleteRead
 import time
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from configure_model import CONFIG, MODELS, PRIVATE, private_directory
 from flow_backend import (BackendStopped, ResponseBackend, MAX_INPUT_BYTES,
@@ -53,7 +56,9 @@ def checked_grant(path, case_hash, now=None):
         expires = datetime.fromisoformat(data['expires_at'].replace('Z', '+00:00'))
         if expires.tzinfo is None or expires <= (now or datetime.now(timezone.utc)):
             raise BackendStopped('budget_expired')
-        if type(data['max_calls']) is not int or not 2 <= data['max_calls'] <= 4:
+        if type(data['max_calls']) is not int or not 2 <= data['max_calls'] <= 5:
+            raise ValueError()
+        if data.get('transport_mode','json') not in ('json','sse'):
             raise ValueError()
         if set(data['roles']) != {'analysis', 'review', 'repair'}:
             raise ValueError()
@@ -77,6 +82,19 @@ def checked_grant(path, case_hash, now=None):
         raise
     except (ValueError, TypeError, KeyError, AttributeError):
         raise BackendStopped('invalid_budget') from None
+
+
+def safe_failure_kind(exc):
+    # 只输出固定分类，不序列化异常消息、URL、头部或任意类名。
+    cause = exc.reason if isinstance(exc, URLError) else exc
+    for cls, label in ((ssl.SSLCertVerificationError, 'tls_certificate'),
+                       (ssl.SSLEOFError, 'tls_eof'),
+                       (socket.gaierror, 'dns'), (TimeoutError, 'timeout'),
+                       (RemoteDisconnected, 'remote_closed'), (IncompleteRead, 'incomplete_read'),
+                       (ConnectionResetError, 'connection_reset'),
+                       (ConnectionRefusedError, 'connection_refused'), (ssl.SSLError, 'tls')):
+        if isinstance(cause, cls): return label
+    return 'network' if isinstance(exc, (OSError, URLError)) else 'response_or_usage'
 
 
 class ModelResponses(ResponseBackend):
@@ -117,7 +135,11 @@ class ModelResponses(ResponseBackend):
                 'known_tokens_by_model': usage,
                 'usage_unknown': len(starts) != len(ends) or any(e.get('usage') is None for e in ends),
                 'paid_calls_authorized': False, 'billing_verified': False,
-                'grant_id': self.grant['grant_id'] if self.grant else None}
+                'grant_id': self.grant['grant_id'] if self.grant else None,
+                'last_failure': ({'kind':ends[-1].get('failure_kind', ends[-1].get('error','unknown')),
+                                  'phase':ends[-1].get('http_diagnostic',{}).get('phase'),
+                                  'http_status':ends[-1].get('http_status',ends[-1].get('http_diagnostic',{}).get('http_status'))}
+                                 if ends and ends[-1].get('status') != 'ok' else None)}
 
     @contextmanager
     def session(self):
@@ -201,7 +223,9 @@ class ModelResponses(ResponseBackend):
         except (ValueError, OSError, TypeError, KeyError):
             raise BackendStopped('model_configuration_invalid') from None
         body = {'model': model, 'messages': messages, 'enable_thinking': False,
-                'stream': False, 'max_tokens': MAX_OUTPUT_TOKENS}
+                'stream': self.grant.get('transport_mode','json') == 'sse', 'max_tokens': MAX_OUTPUT_TOKENS}
+        if body['stream']:
+            body['stream_options']={'include_usage':True}
         if model == 'qwen3.8-flash':
             body['response_format'] = {'type': 'json_object'}
         # DeepSeek的JSON模式未实测，不擅自假设可用；仍做本地严格校验。
@@ -241,9 +265,10 @@ class ModelResponses(ResponseBackend):
             outcome['error'] = exc.code
         except HTTPError as exc:
             outcome.update(error='http_error', http_status=exc.code)
-        except Exception:
+        except Exception as exc:
             # 不能把供应商异常原文写入日志或前端。
             outcome['error'] = 'transport_or_usage_error'
+            outcome['failure_kind'] = safe_failure_kind(exc)
         outcome['elapsed_seconds'] = round(time.monotonic() - started_at, 3)
         append_event(self.directory/'events.jsonl', outcome)
         if outcome['status'] != 'ok':

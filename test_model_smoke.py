@@ -1,11 +1,71 @@
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
 from urllib.request import Request
 
 from configure_model import MODELS, save_new
-from model_smoke import NoRedirect, load_config, run
+from model_smoke import NoRedirect, load_config, run, read_event_stream, transport
+
+
+class StreamTests(unittest.TestCase):
+    def chunks(self):
+        return [{'choices':[{'index':0,'delta':{'content':t},'finish_reason':None}]} for t in ('测','试')] + [
+            {'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]},
+            {'choices':[],'usage':{'prompt_tokens':10,'completion_tokens':2,'total_tokens':12}}]
+
+    def read(self,chunks,done=True,limit=10000,audit=None):
+        raw=''.join('data: '+json.dumps(c,ensure_ascii=False)+'\r\n\r\n' for c in chunks)
+        if done:raw+='data: [DONE]\r\n\r\n'
+        response=io.BytesIO(raw.encode());response.status=200
+        return read_event_stream(response,limit,5,audit)
+
+    def test_complete_stream_reconstructs_content_and_usage_without_audit_text(self):
+        audit=[];result=self.read(self.chunks(),audit=audit.append)
+        self.assertEqual(result['choices'][0]['message']['content'],'测试')
+        self.assertEqual(result['usage']['total_tokens'],12)
+        self.assertTrue(audit[-1]['stream_complete'])
+        self.assertNotIn('测试',json.dumps(audit,ensure_ascii=False))
+
+    def test_partial_missing_usage_or_finish_and_duplicate_usage_fail_closed(self):
+        chunks=self.chunks()
+        for events,done in [(chunks,False),(chunks[:-1],True),(chunks[:2]+chunks[3:],True),(chunks+[chunks[-1]],True)]:
+            with self.subTest(events=events,done=done),self.assertRaises(ValueError):self.read(events,done)
+
+    def test_size_tools_malformed_and_content_after_finish_rejected(self):
+        with self.assertRaises(ValueError):self.read(self.chunks(),limit=20)
+        for chunk in [None,{'choices':[{'index':0,'delta':{'tool_calls':[{}]}}]},
+                      {'choices':[{'index':1,'delta':{}}]}]:
+            with self.assertRaises(ValueError):self.read([chunk])
+        chunks=self.chunks();chunks.insert(3,chunks[0])
+        with self.assertRaises(ValueError):self.read(chunks)
+
+    def test_real_local_http_disconnect_truncated_stream_and_complete_response(self):
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        from http.client import RemoteDisconnected
+        import socket,threading
+        calls=[];chunks=self.chunks()
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']));calls.append(self.path)
+                if self.path.startswith('/disconnect/'):
+                    self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
+                raw=''.join('data: '+json.dumps(c)+'\n\n' for c in chunks)
+                if self.path.startswith('/complete/'):raw+='data: [DONE]\n\n'
+                raw=raw.encode();self.send_response(200);self.send_header('Content-Type','text/event-stream')
+                self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+        try:
+            for index,route in enumerate(('disconnect','partial','complete'),1):
+                config={'base_url':f'http://127.0.0.1:{server.server_port}/{route}','api_key':'fake-local-test-only'}
+                if route=='complete':
+                    self.assertEqual(transport(config,{'stream':True},timeout=2)['choices'][0]['message']['content'],'测试')
+                else:
+                    with self.assertRaises(RemoteDisconnected if route=='disconnect' else ValueError):transport(config,{'stream':True},timeout=2)
+                self.assertEqual(len(calls),index)  # 每次失败只发一次，没有隐式重发。
+        finally:server.shutdown();server.server_close();worker.join(timeout=2)
 
 
 class ModelSmokeTests(unittest.TestCase):

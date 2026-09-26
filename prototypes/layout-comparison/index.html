@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>资料助手 · 两套交互方案</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header class="demo-bar"><div class="demo-label"><span class="demo-dot"></span><b>交互草稿</b><span>演示数据 · 不搜索、不调用模型</span></div><nav class="switcher" aria-label="选择布局方案"><button data-layout="a" aria-pressed="true">A <span>对话＋报告</span></button><button data-layout="b" aria-pressed="false">B <span>分阶段研究</span></button></nav><button id="help" class="text-button">怎么比较 ↗</button></header>
+<div class="workspace">
+<aside class="sidebar"><a class="brand" href="#"><span class="brand-mark">↗</span><span>资料助手<small>RESEARCH SPACE</small></span></a><button class="new-button" id="new-task"><span>＋</span> 新建研究 </button><div class="nav-label">研究记录 <span>01</span></div><button class="history-item" id="history"><span class="history-dot"></span><span>训练计划功能对比<small>演示任务 · 点击查看结果</small></span></button><div class="sidebar-bottom"><button id="source-settings">◉ <span>来源中心</span><small id="capability-count"></small></button><button id="model-settings">⚙ <span>运行设置</span></button><div class="local-mode"><span></span>本机原型 <small>仅交互演示</small></div></div></aside>
+<main id="main"></main>
+</div>
+<dialog id="evidence" class="evidence-dialog" aria-labelledby="evidence-title"><div class="drawer-top"><span class="eyebrow">SOURCE / 原文证据</span><button class="icon-button" data-close aria-label="关闭证据">×</button></div><div id="evidence-content"></div></dialog>
+<dialog id="info" class="info-dialog" aria-labelledby="info-title"><button class="icon-button close-info" data-close aria-label="关闭说明">×</button><div id="info-content"></div><button class="solid" data-close>知道了</button></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<dialog id="source-picker" class="picker-dialog" aria-labelledby="picker-title"><div class="drawer-top"><span class="eyebrow">本次任务 / SOURCE SCOPE</span><button class="icon-button" data-close aria-label="关闭来源选择">×</button></div><div id="picker-content"></div></dialog>
+<script src="catalog.js"></script><script src="app.js"></script>
+</body></html>

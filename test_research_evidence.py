@@ -1,21 +1,27 @@
 import json
-import shutil
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 
-from research_evidence import build_evidence, handoff_preview, verify_package
-
-
-FIXTURE = Path(__file__).parent / 'runs/public-web-elevator-2026-09-23'
+from research_evidence import build_evidence, handoff_preview, verify_package, question_checklist
+from research_acquisition import collect_candidates
 
 
 class ResearchEvidenceTests(unittest.TestCase):
     def make_fixture(self):
         temp = tempfile.TemporaryDirectory()
         root = Path(temp.name)
-        shutil.copy(FIXTURE / 'search.json', root / 'search.json')
-        shutil.copytree(FIXTURE / 'sources', root / 'sources')
+        search={'status':'searched','backend':'synthetic_test','query':'虚构测试问题','objective':'测试证据契约',
+                'searched_at':'2026-09-23T12:42:00+00:00',
+                'results':[{'rank':n,'url':f'https://example.com/{n}','title':f'虚构来源{n}'} for n in range(1,4)]}
+        (root/'search.json').write_text(json.dumps(search))
+        def collector(url,**kwargs):
+            body='虚构测试正文，仅用于验证哈希和来源边界。'
+            return {'url':url,'status':'fetched_unverified','error':None,'content':body,
+                    'content_sha256':hashlib.sha256(body.encode()).hexdigest(),
+                    'fetched_at':'2026-09-23T12:42:00+00:00'}
+        collect_candidates(search,root/'sources',collector=collector)
         (root / 'run.json').write_text(json.dumps({
             'id': 'a' * 32, 'status': 'completed',
             'input': {'question': '电梯预测性维保有哪些公开资料？', 'region': '中国大陆',
@@ -40,6 +46,32 @@ class ResearchEvidenceTests(unittest.TestCase):
             self.assertEqual(preview['roles'][1]['status'], 'waiting_for_analysis')
         finally:
             temp.cleanup()
+
+    def test_question_checklist_keeps_separate_conditions_and_full_tail(self):
+        q='某App如何离线？哪些设备或套餐可用，哪些操作需要联网？请区分官方说明和未知。'
+        questions=question_checklist(q)
+        self.assertEqual(len(questions),5)
+        self.assertEqual(questions['Q2'],'哪些设备或套餐可用')
+        self.assertEqual(questions['Q3'],'哪些操作需要联网？')
+        long_question=''.join(f'问题{i}？' for i in range(15))
+        result=question_checklist(long_question)
+        self.assertEqual(len(result),9)
+        self.assertTrue(all(f'问题{i}？' in ' '.join(result.values()) for i in range(15)))
+
+    def test_legacy_packages_keep_hash_while_new_packages_split_questions(self):
+        temp,root=self.make_fixture()
+        try:
+            task_path=root/'run.json';task=json.loads(task_path.read_text())
+            task['input']['question']='如何离线？哪些设备支持？'
+            task_path.write_text(json.dumps(task))
+            old=build_evidence(root,'evidence-package/0.1')
+            self.assertEqual(len(verify_package(root,old)['questions']),2)
+            new=build_evidence(root)
+            self.assertEqual(len(verify_package(root,new)['questions']),3)
+            self.assertNotEqual(old['case_sha256'],new['case_sha256'])
+            self.assertEqual(old,build_evidence(root,'evidence-package/0.1'))
+            with self.assertRaises(ValueError):build_evidence(root,'unknown-version')
+        finally:temp.cleanup()
 
     def test_changed_body_hash_blocks_analysis_input(self):
         temp, root = self.make_fixture()

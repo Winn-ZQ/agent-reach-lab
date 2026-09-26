@@ -7,7 +7,7 @@ import unittest
 
 from configure_model import MODELS, save_new
 from flow_backend import BackendStopped, REVIEW_CAPACITY
-from model_gateway import ModelResponses, checked_grant
+from model_gateway import ModelResponses, checked_grant, safe_failure_kind
 from model_smoke import append_event
 from research_flow import digest, encoded, run
 from run_research import preflight
@@ -60,6 +60,26 @@ class GatewayTests(unittest.TestCase):
     def messages(self):
         return [{'role':'system','content':'只输出JSON'}, {'role':'user','content':encoded(self.case)}]
 
+    def test_failure_diagnostics_are_fixed_categories_without_secret_messages(self):
+        import socket,ssl
+        from urllib.error import URLError
+        from http.client import RemoteDisconnected,IncompleteRead
+        examples=[(URLError(socket.gaierror('private-host')), 'dns'),
+                  (TimeoutError(self.key),'timeout'),(RemoteDisconnected(self.key),'remote_closed'),
+                  (IncompleteRead(b'private-response'),'incomplete_read'),
+                  (ConnectionResetError(self.key),'connection_reset'),
+                  (URLError(ssl.SSLEOFError(self.key)), 'tls_eof'),
+                  (ssl.SSLError(self.key),'tls'),(ValueError(self.key),'response_or_usage')]
+        for exc,kind in examples:self.assertEqual(safe_failure_kind(exc),kind)
+        def fail(config,body):raise URLError(RemoteDisconnected(self.key))
+        with self.gateway(fail).session() as source:
+            with self.assertRaisesRegex(BackendStopped,'transport_or_usage_error'):
+                source.respond('analysis',self.messages())
+            event=source.events()[-1]
+            self.assertEqual(event['failure_kind'],'remote_closed')
+            self.assertTrue(source.snapshot()['usage_unknown'])
+            self.assertNotIn(self.key,json.dumps(source.events()))
+
     def test_full_flow_role_routing_and_usage(self):
         source = self.gateway()
         with source.session():
@@ -73,6 +93,18 @@ class GatewayTests(unittest.TestCase):
         payload=json.loads(self.seen[1]['messages'][1]['content'])
         self.assertEqual(set(payload),{'case','draft','review_targets'})
         self.assertNotIn(self.key,(source.directory/'events.jsonl').read_text())
+
+    def test_stream_transport_is_explicit_and_requests_usage(self):
+        self.grant['transport_mode']='sse';self.update_grant()
+        def send(config,body):
+            self.assertTrue(body['stream'])
+            self.assertEqual(body['stream_options'],{'include_usage':True})
+            return self.response(self.review)
+        with self.gateway(send).session() as source:
+            source.respond('review',self.messages())
+            self.assertFalse(source.snapshot()['usage_unknown'])
+        self.grant['transport_mode']='other';self.update_grant()
+        with self.assertRaises(BackendStopped):checked_grant(self.grant_path,digest(self.case))
 
     def test_no_grant_stops_before_config_or_network(self):
         self.grant_path.unlink(); self.config.unlink()

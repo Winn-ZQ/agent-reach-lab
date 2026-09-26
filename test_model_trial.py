@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -27,8 +28,17 @@ class TrialTests(unittest.TestCase):
         return {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(self.good)}}],
                 'model': body['model'], 'usage': {'prompt_tokens': 10, 'completion_tokens': 10, 'total_tokens': 20}}
 
-    def test_real_input_integrity(self):
-        self.assertEqual(set(packets()), {'web-facts', 'app-feedback', 'review-trap'})
+    def test_input_integrity_without_private_trial_files(self):
+        rows=[]
+        for name in ('web-facts','app-feedback','review-trap'):
+            text=json.dumps({'kind':'synthetic_fixture','case':self.case})
+            (self.root/(name+'.json')).write_text(text)
+            rows.append({'id':name,'file':name+'.json','sha256':hashlib.sha256(text.encode()).hexdigest()})
+        (self.root/'manifest.json').write_text(json.dumps({'cases':rows}))
+        self.assertEqual(set(packets(self.root)), {'web-facts', 'app-feedback', 'review-trap'})
+        (self.root/'web-facts.json').write_text('{}')
+        with self.assertRaisesRegex(ValueError,'input hash mismatch'):
+            packets(self.root)
 
     def test_quotes_references_and_coverage(self):
         self.assertEqual(validate(self.good, self.case, 'analysis'), [])

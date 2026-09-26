@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from research_acquisition import SearchError, collect_candidates, parse_search_response, search_public_web
+from research_acquisition import SearchError, collect_candidates, node_path, parse_search_response, search_public_web
 
 
 PAYLOAD = {
@@ -36,6 +36,23 @@ second highlight"""}]
 
 
 class AcquisitionAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        tool=self.root/'.tools/node_modules/.bin/mcporter'
+        tool.parent.mkdir(parents=True);tool.touch()
+
+    def test_explicit_node_and_missing_runtime_do_not_silently_fallback(self):
+        node=self.root/'node';node.touch();node.chmod(0o700)
+        with patch.dict('os.environ',{'AGENT_REACH_NODE':str(node)}):
+            self.assertEqual(node_path(),node)
+        with patch.dict('os.environ',{'AGENT_REACH_NODE':str(self.root/'missing')}):
+            self.assertIsNone(node_path())
+            with patch('research_acquisition.subprocess.run') as sender:
+                with self.assertRaises(SearchError) as ctx:
+                    search_public_web('question','objective',root=self.root)
+                self.assertEqual(ctx.exception.kind,'not_configured');sender.assert_not_called()
+
     def test_parse_deduplicates_and_keeps_metadata(self):
         results = parse_search_response(PAYLOAD, 3)
         self.assertEqual([item["url"] for item in results], ["https://example.com/a", "http://example.org/b"])
@@ -50,7 +67,7 @@ class AcquisitionAdapterTests(unittest.TestCase):
     def test_search_uses_argument_list_and_no_shell(self):
         runner = Mock(return_value=CompletedProcess([], 0, json.dumps(PAYLOAD), ""))
         result = search_public_web("elevator; touch /tmp/no", "find official pages",
-                                  runner=runner, root=Path.cwd())
+                                  runner=runner, root=self.root)
         args, kwargs = runner.call_args
         self.assertFalse(kwargs["shell"])
         self.assertIn("elevator; touch /tmp/no", args[0][args[0].index("--args") + 1])
@@ -60,7 +77,7 @@ class AcquisitionAdapterTests(unittest.TestCase):
     def test_search_failure_does_not_expose_stderr(self):
         runner = Mock(return_value=CompletedProcess([], 1, "", "secret-token=abc"))
         with self.assertRaises(SearchError) as context:
-            search_public_web("question", "objective", runner=runner, root=Path.cwd())
+            search_public_web("question", "objective", runner=runner, root=self.root)
         self.assertEqual(context.exception.kind, "search_failed")
         self.assertNotIn("secret-token", str(context.exception))
 

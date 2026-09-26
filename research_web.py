@@ -18,6 +18,7 @@ from research_flow import OfflineResponses, encoded, parse, prepare_case, run
 from research_acquisition import SearchError, collect_candidates, search_public_web
 from research_evidence import build_evidence, handoff_preview, verify_package, load_record
 from run_research import preflight
+from research_live import LiveStore
 
 ROOT=Path(__file__).resolve().parent
 WEB=ROOT/'web'
@@ -303,8 +304,16 @@ class TaskStore:
 
 
 def make_server(directory=PRIVATE/'web-runs',port=0):
+    # 首次启动没有 .local；只创建任务父目录，不要求先配置模型。
+    parent=Path(directory).parent
+    if parent.is_symlink():
+        raise ValueError('任务父目录不能是符号链接')
+    if not parent.exists():
+        private_directory(parent)
     store=TaskStore(directory)
     acquisitions=AcquisitionStore(Path(directory).parent/'web-acquisitions')
+    live=LiveStore(Path(directory).parent/'live-research')
+    dispatch_lock=threading.RLock()
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args): pass
 
@@ -348,8 +357,8 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
                 return
             query=parse_qs(urlsplit(self.path).query)
             query_session=query.get('session',[''])[0]
-            root_token=(path=='/' and secrets.compare_digest(query_session,self.server.session))
-            if path in ('/app.js','/style.css','/result.css'):
+            root_token=(path in ('/','/legacy') and secrets.compare_digest(query_session,self.server.session))
+            if path in ('/app.js','/style.css','/result.css','/workspace.js','/workspace.css'):
                 try:
                     self.send(200,(WEB/path[1:]).read_bytes(),'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
                 except OSError:
@@ -359,8 +368,8 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
             if not self.authorized() and not root_token and not result_token:
                 self.send(403,{'error':'请从启动时提供的本机入口打开页面'});return
             try:
-                if path=='/':
-                    page=(WEB/'index.html').read_text()
+                if path in ('/','/legacy'):
+                    page=(WEB/('workspace.html' if path=='/' else 'index.html')).read_text()
                     if root_token:
                         page=page.replace('<body>', '<body data-session='+json.dumps(self.server.session)+'>')
                     self.send(200,page,'text/html; charset=utf-8');return
@@ -370,6 +379,19 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
                     self.send(200,page,'text/html; charset=utf-8');return
                 if path=='/api/bootstrap':
                     self.send(200,{'csrf':self.server.csrf,'scenarios':store.options(),'live_execution_enabled':False});return
+                if path=='/api/live/bootstrap':
+                    self.send(200,{'csrf':self.server.csrf,'capabilities':live.capabilities(),'budget':live.budget.status()});return
+                if path=='/api/live/tasks':
+                    self.send(200,live.listing());return
+                match_live=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})(?:/(report\.md|materials\.csv))?',path)
+                if match_live:
+                    detail=live.detail(match_live[1])
+                    if not match_live[2]:self.send(200,detail);return
+                    if detail['task']['status'] in ('running','cancelling'):
+                        self.send(409,{'error':'请等待本次任务结束后导出'});return
+                    body=export_markdown(detail) if match_live[2]=='report.md' else export_csv(detail)
+                    kind='text/markdown' if match_live[2]=='report.md' else 'text/csv'
+                    self.send(200,body,kind+'; charset=utf-8',{'Content-Disposition':f'attachment; filename="{match_live[1]}-{match_live[2]}"'});return
                 if path=='/api/tasks':
                     self.send(200,store.listing());return
                 if path=='/api/acquisitions':
@@ -391,6 +413,10 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
             except (ValueError,OSError,TypeError):self.send(500,{'error':'无法读取本机记录'})
 
         def do_POST(self):
+            with dispatch_lock:
+                self.handle_post()
+
+        def handle_post(self):
             if (not self.authorized() or self.headers.get('Origin')!=self.server.origin
                     or self.headers.get('Sec-Fetch-Site') not in (None,'same-origin')
                     or not secrets.compare_digest(self.headers.get('X-CSRF-Token',''),self.server.csrf)
@@ -403,6 +429,36 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
                 raw=self.rfile.read(size)
                 if len(raw)!=size:raise ValueError()
                 data=parse(raw.decode())
+                if self.path in ('/api/live/tasks','/api/tasks','/api/acquisitions') and (live.active or store.active or acquisitions.active):
+                    # 重复提交当前相同任务可返回原记录，其余任务互斥。
+                    entries=live.tasks.values() if self.path=='/api/live/tasks' else store.tasks.values() if self.path=='/api/tasks' else acquisitions.runs.values()
+                    if not any(t.get('request_id')==data.get('request_id') for t in entries):
+                        raise RuntimeError('busy')
+                if self.path=='/api/live/tasks':
+                    self.send(202,live.start(data));return
+                if self.path=='/api/live/quota':
+                    if live.active: raise RuntimeError('busy')
+                    self.send(200,live.observe_quota(data));return
+                retry_match=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})/retry-citations',self.path)
+                if retry_match and set(data)=={'request_id'}:
+                    if store.active or acquisitions.active: raise RuntimeError('busy')
+                    self.send(202,live.retry_citations(retry_match[1],data['request_id']));return
+                review_match=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})/continue-review',self.path)
+                if review_match and set(data)=={'request_id'}:
+                    if store.active or acquisitions.active: raise RuntimeError('busy')
+                    self.send(202,live.continue_review(review_match[1],data['request_id']));return
+                recovery_match=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})/retry-connection',self.path)
+                if recovery_match and set(data)=={'request_id'}:
+                    if store.active or acquisitions.active: raise RuntimeError('busy')
+                    self.send(202,live.retry_connection(recovery_match[1],data['request_id']));return
+                recheck_match=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})/retry-review',self.path)
+                if recheck_match and set(data)=={'request_id'}:
+                    if store.active or acquisitions.active: raise RuntimeError('busy')
+                    self.send(202,live.retry_review(recheck_match[1],data['request_id']));return
+                live_action=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})/(cancel|resume)',self.path)
+                if live_action and data=={}:
+                    if live_action[2]=='resume' and (store.active or acquisitions.active): raise RuntimeError('busy')
+                    self.send(200,live.cancel(live_action[1]) if live_action[2]=='cancel' else live.resume(live_action[1]));return
                 if self.path=='/api/tasks' and set(data)=={'scenario_id','request_id'}:
                     self.send(202,store.start(data['scenario_id'],data['request_id']));return
                 if self.path=='/api/preflight' and set(data)=={'scenario_id'}:
@@ -436,6 +492,7 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
     server.session=secrets.token_urlsafe(32)
     server.csrf=secrets.token_urlsafe(32)
     server.store=store
+    server.live=live
     return server
 
 
@@ -445,6 +502,6 @@ if __name__=='__main__':
     args=parser.parse_args()
     with make_server(port=args.port) as server:
         print('资料研究工作台：'+server.origin+server.entry,flush=True)
-        print('仅本机监听；公开网页采集可用，模型分析与小红书未开放。',flush=True)
+        print('仅本机监听；新版网页自动研究按免费额度与预算执行，小红书未接入。',flush=True)
         try:server.serve_forever()
         except KeyboardInterrupt:pass
