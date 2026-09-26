@@ -16,7 +16,7 @@
 
 新环境请先看 [安装与启动](docs/QUICKSTART.md)。当前测试仅承诺 macOS／Linux，Windows 可用 WSL；运行依赖版本已固定，其他系统仍需安装验证。
 
-课程演示可直接使用[5 分钟演示脚本](docs/DEMO-SCRIPT.md)和[公开文件清单](docs/PUBLIC-FILE-MANIFEST.md)。 本轮[更新说明](docs/RELEASE-NOTES-2026-09-26.md)、[最终交付报告](docs/FINAL-DELIVERY-2026-09-26.md)与[交付检查记录](docs/DELIVERY-CHECK-2026-09-26.md)随本次代码更新发布。
+课程演示可直接使用[5 分钟演示脚本](docs/DEMO-SCRIPT.md)和[公开文件清单](docs/PUBLIC-FILE-MANIFEST.md)。 本轮[更新说明](docs/RELEASE-NOTES-2026-09-26.md)、[最终交付报告](docs/FINAL-DELIVERY-2026-09-26.md)与[交付检查记录](docs/DELIVERY-CHECK-2026-09-26.md)已本地提交；推送暂因本机缺少GitHub登录凭据而未完成。
 
 可先查看 [三种状态的结果交付样例](docs/examples/app-research/index.html)、[真实电梯验收结果展示页](web/result.html) 和 [样例说明](docs/examples/app-research/README.md)。App A 数据全部虚构，仅用于评审交付；电梯展示页使用真实脱敏验收摘要，不代表最终政策结论。
 
