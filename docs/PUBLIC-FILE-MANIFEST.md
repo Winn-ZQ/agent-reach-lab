@@ -16,6 +16,8 @@ research_acquisition.py
 research_evidence.py
 research_exports.py
 research_flow.py
+evidence_segments.py
+compact_review.py
 research_web.py
 research_live.py
 research_budget.py
@@ -25,6 +27,8 @@ run_research.py
 run_followup.py
 run_resume.py
 model_gateway.py
+model_profiles.py
+thinking_benchmark.py
 model_validation.py
 configure_model.py
 configure_model_web.py
@@ -71,3 +75,5 @@ runs/**/sources/
 - `repair_contract.py`、`test_repair_contract.py`、`runs/web-evaluation-2026-09-26/REPAIR-CONTRACT-*.md`：修正契约实现、虚构测试及脱敏记录。实际原文和模型补丁仍仅在 `.local/`。
 
 - `docs/FINAL-DELIVERY-2026-09-26.md`：本阶段最终结果、验证范围和已知限制，不包含私人账本或原始证据。
+
+- `docs/WEB-PREVIEW-RELEASE-2026-09-27.md`、模型思考/片段/compact各轮记录及模型成本对照：公开脱敏结论；真实网页导出、截图及原响应继续保留在 `.local/`。

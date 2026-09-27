@@ -16,6 +16,12 @@ from research_acquisition import search_public_web, collect_candidates, SearchEr
 from research_budget import WebBudget
 from research_evidence import build_evidence, verify_package
 from research_flow import digest, encoded, parse, run
+from evidence_segments import catalog, present_case
+
+POLICIES = {
+    'legacy': dict(model_profile='legacy', reference_mode='literal', transport_mode='json'),
+    'preview-v1': dict(model_profile='qwen-review-thinking-json-v2', reference_mode='compact-v2', transport_mode='sse'),
+}
 
 CATALOG = [
  ('web','公开网页','网页与订阅',['搜索候选','读取正文']),
@@ -57,7 +63,9 @@ class GuardedResponses(ResponseBackend):
 
 
 class LiveStore:
-    def __init__(self,directory,search=None,collector=None,backend_factory=None,budget=None):
+    def __init__(self,directory,search=None,collector=None,backend_factory=None,budget=None,execution_policy='preview-v1'):
+        if execution_policy not in POLICIES: raise ValueError('unknown execution policy')
+        self.execution_policy=execution_policy
         self.directory=Path(directory); private_directory(self.directory)
         self.lock=threading.RLock(); self.active=None; self.tasks={}; self.cancel_flags={}
         self.search=search or search_public_web; self.collector=collector
@@ -76,6 +84,11 @@ class LiveStore:
     def capabilities(self):
         return [{'id':i,'name':n,'group':g,'operations':[{'name':o,'status':'configured_not_checked' if i=='web' else 'not_connected'} for o in ops],
                  'executable':i=='web'} for i,n,g,ops in CATALOG]
+
+    def budget_status(self):
+        policy=POLICIES[self.execution_policy]
+        result=self.budget.status(policy['model_profile'],65536 if self.execution_policy=='preview-v1' else None)
+        return {**result,'execution_policy':self.execution_policy,'reference_mode':policy['reference_mode']}
 
     def listing(self):
         with self.lock: return deepcopy(sorted(self.tasks.values(),key=lambda t:t['created_at'],reverse=True))
@@ -100,7 +113,9 @@ class LiveStore:
     def observe_quota(self,data):
         with self.lock:
             fd=self._acquire()
-            try: return self.budget.observe(data)
+            try:
+                self.budget.observe(data)
+                return self.budget_status()
             finally:
                 fcntl.flock(fd,fcntl.LOCK_UN); os.close(fd)
 
@@ -127,6 +142,7 @@ class LiveStore:
             try:
                 directory.mkdir(mode=0o700)
                 task={'id':tid,'request_id':data['request_id'],'input':{k:v for k,v in data.items() if k!='request_id'},
+                      'execution_policy':self.tasks[retry_from].get('execution_policy','legacy') if retry_from else self.execution_policy,
                       'question':data['question'],'mode':'live_api','created_at':now(),'updated_at':now(),
                       'status':'running','stage':'scope','reason':None,'events':[],
                       'limits':{'max_sources':3,'max_model_calls':3 if continuation_kind == 'review_recheck' else 2 if continuation_kind in ('review_revision','transport_recovery') else 5,'max_revisions':1,'active_seconds':600},
@@ -171,7 +187,7 @@ class LiveStore:
             from research_flow import validate_draft, validate_review
             if (state['evidence_sha256']!=digest(case) or review['evidence_sha256']!=digest(case)
                     or review['draft_sha256']!=digest(state['final_draft'])
-                    or validate_draft(state['final_draft'],case) or validate_review(review['result'],case,state['final_draft'])
+                    or validate_draft(state['final_draft'],case) or validate_review(review['result'],case,state['final_draft'],include_limitations=state.get('reference_mode')=='compact-v2')
                     or any(i['action']=='fetch' for i in review['result']['issues'])):
                 raise ValueError('invalid continuation snapshot')
             return self.start({**parent['input'],'parent_task_id':tid,'request_id':request_id},
@@ -193,7 +209,7 @@ class LiveStore:
             from research_flow import validate_draft,validate_review
             if (state['evidence_sha256']!=digest(case) or review['evidence_sha256']!=digest(case)
                     or review['draft_sha256']!=digest(state['final_draft'])
-                    or validate_draft(state['final_draft'],case) or validate_review(review['result'],case,state['final_draft'])
+                    or validate_draft(state['final_draft'],case) or validate_review(review['result'],case,state['final_draft'],include_limitations=state.get('reference_mode')=='compact-v2')
                     or review['result']['verdict']!='revise'
                     or any(i['action']=='fetch' for i in review['result']['issues'])):
                 raise ValueError('invalid recovery snapshot')
@@ -290,12 +306,20 @@ class LiveStore:
             case=verify_package(directory,package); check()
             self._event(tid,'budget','检查模型额度并预留独立复核预算')
             requested_calls=3 if task.get('continuation_kind')=='review_recheck' else 2 if initial_review else 4 if initial_draft else 5
-            grant=self.budget.issue(tid,digest(case),scope['parent_task_id'],requested_calls=requested_calls)
+            # 旧任务没有策略字段时沿用旧路径；新配置不追溯更改等待/恢复中的历史任务。
+            policy=POLICIES[task.get('execution_policy','legacy')]
+            input_cap=None
+            if policy['reference_mode']=='compact-v2':
+                evidence_bytes=len(encoded(present_case(case,catalog(case))).encode())
+                input_cap=min(180000,max(65536,evidence_bytes*3+16384))
+            self._update(tid,model_profile=policy['model_profile'],reference_mode=policy['reference_mode'])
+            grant=self.budget.issue(tid,digest(case),scope['parent_task_id'],requested_calls=requested_calls,
+                transport_mode=policy['transport_mode'],model_profile=policy['model_profile'],max_input_bytes=input_cap)
             call_limit=parse(grant.read_text())['max_calls']
             self._update(tid,limits={**task['limits'],'max_model_calls':call_limit})
             backend=self.backend_factory(grant,digest(case)); check()
             with backend.session():
-                state=run(case,GuardedResponses(backend,check),directory/'flow',call_limit=call_limit,on_event=changed,initial_draft=initial_draft,initial_review=initial_review)
+                state=run(case,GuardedResponses(backend,check),directory/'flow',call_limit=call_limit,on_event=changed,initial_draft=initial_draft,initial_review=initial_review,reference_mode=policy['reference_mode'])
             check()
             self._update(tid,status=state['execution_status'],stage='finished',reason=state['stop_reason'])
         except BackendStopped as exc:

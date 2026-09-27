@@ -9,6 +9,7 @@ from configure_model import MODELS, save_new
 from flow_backend import BackendStopped, REVIEW_CAPACITY
 from model_gateway import ModelResponses, checked_grant, safe_failure_kind
 from model_smoke import append_event
+from model_profiles import profile, output_capacity
 from research_flow import digest, encoded, run
 from run_research import preflight
 from test_research_flow import fixture
@@ -59,6 +60,119 @@ class GatewayTests(unittest.TestCase):
 
     def messages(self):
         return [{'role':'system','content':'只输出JSON'}, {'role':'user','content':encoded(self.case)}]
+
+    def test_narrow_input_cap_preserves_same_model_review_reservation(self):
+        self.use_profile('qwen-review-thinking-v1')
+        self.grant['max_input_bytes'] = 8192
+        self.grant['token_limits'][MODELS[0]] = 30000
+        self.update_grant()
+        with self.gateway(lambda config, body:self.response(self.draft)).session() as source:
+            source.respond('analysis', self.messages())
+            started = next(e for e in source.events() if e['event'] == 'started')
+            self.assertGreater(started['reserved_capacity'][MODELS[0]], 8192+8192)
+            oversized = self.messages(); oversized[0]['content'] = 'x'*8200
+            with self.assertRaisesRegex(BackendStopped, 'input_size_limit'):
+                source.respond('review', oversized)
+            self.assertEqual(source.snapshot()['simulated_calls'], 1)
+
+    def test_input_cap_cannot_disable_bounds(self):
+        for value in (0, 8191, 180001, True, '8192'):
+            self.grant['max_input_bytes'] = value; self.update_grant()
+            with self.assertRaises(BackendStopped): checked_grant(self.grant_path, digest(self.case))
+
+    def test_segment_projection_checks_original_case_scope_before_network(self):
+        from evidence_segments import present_case, catalog
+        projected=present_case(self.case,catalog(self.case))
+        messages=self.messages();messages[1]['content']=encoded(projected)
+        with self.gateway().session() as source:
+            source.respond('analysis',messages)
+            projected['task']='另一个未授权任务'
+            messages[1]['content']=encoded(projected)
+            with self.assertRaisesRegex(BackendStopped,'task_scope_mismatch'):
+                source.respond('analysis',messages)
+            self.assertEqual(len(self.seen),1)
+
+    def use_profile(self, name):
+        roles, options = profile(name)
+        observation = next(iter(self.grant['free_quota_observation'].values()))
+        self.grant.update(roles=roles, role_options=options, model_profile=name,
+                          token_limits={m:300000 for m in set(roles.values())},
+                          free_quota_observation={m:deepcopy(observation) for m in set(roles.values())})
+        self.update_grant()
+
+    def test_thinking_payload_and_usage_include_reasoning(self):
+        self.use_profile('qwen-review-thinking-v1')
+        def send(config, body):
+            self.assertTrue(body['enable_thinking'])
+            self.assertEqual(body['max_completion_tokens'],8192)
+            self.assertEqual(body['thinking_budget'],4096)
+            self.assertNotIn('max_tokens',body)
+            self.assertNotIn('response_format',body)
+            self.assertNotIn('reasoning_effort',body)
+            result=self.response(self.review,output=6000)
+            result['usage']['completion_tokens_details']={'reasoning_tokens':5000}
+            return result
+        with self.gateway(send).session() as source:
+            source.respond('review',self.messages())
+            self.assertEqual(source.snapshot()['known_tokens_by_model'][MODELS[0]],6010)
+            self.assertEqual(source.events()[1]['role_options']['timeout_seconds'],180)
+
+    def test_thinking_reserves_same_model_full_review_capacity(self):
+        self.use_profile('qwen-review-thinking-v1')
+        self.grant['token_limits'][MODELS[0]]=REVIEW_CAPACITY+4096
+        self.update_grant();self.config.unlink()
+        with self.gateway(lambda *a:self.fail('network')).session() as source:
+            with self.assertRaisesRegex(BackendStopped,'token_budget_exhausted'):
+                source.respond('analysis',self.messages())
+
+    def test_max_requires_credentials_scope_and_quota(self):
+        self.use_profile('max-review-thinking-v1')
+        with self.gateway(lambda *a:self.fail('network')).session() as source:
+            with self.assertRaisesRegex(BackendStopped,'model_not_configured'):
+                source.respond('review',self.messages())
+        self.grant['free_quota_observation']['qwen3.8-max']['stop_when_used_up']=False
+        self.update_grant()
+        with self.assertRaises(BackendStopped):checked_grant(self.grant_path,digest(self.case))
+
+    def test_deepseek_thinking_has_supported_effort_only(self):
+        self.use_profile('deepseek-review-thinking-v1')
+        def send(config,body):
+            self.assertEqual(body['reasoning_effort'],'low')
+            self.assertNotIn('thinking_budget',body)
+            return self.response(self.review)
+        with self.gateway(send).session() as source: source.respond('review',self.messages())
+
+    def test_json_thinking_profile_is_explicit_and_preserves_v1(self):
+        from model_profiles import request_options
+        self.use_profile('qwen-review-thinking-json-v2')
+        body=request_options(self.grant,'review')
+        self.assertTrue(body['enable_thinking'])
+        self.assertEqual(body['response_format'],{'type':'json_object'})
+        self.use_profile('qwen-review-thinking-v1')
+        self.assertNotIn('response_format',request_options(self.grant,'review'))
+        self.use_profile('deepseek-review-thinking-budget-v2')
+        body=request_options(self.grant,'review')
+        self.assertEqual(body['max_completion_tokens'],16384)
+        self.assertEqual(body['reasoning_effort'],'low')
+        self.assertEqual(output_capacity(self.grant,'review'),16394)
+
+    def test_invalid_options_and_midrun_profile_change_are_rejected(self):
+        self.use_profile('qwen-review-thinking-v1')
+        self.grant['role_options']['review']['max_completion_tokens']=4096
+        self.update_grant()
+        with self.assertRaises(BackendStopped):checked_grant(self.grant_path,digest(self.case))
+        self.use_profile('qwen-review-thinking-v1')
+        with self.gateway(lambda *a:self.fail('network')).session() as source:
+            self.grant['role_options']['review']['timeout_seconds']=200;self.update_grant()
+            with self.assertRaisesRegex(BackendStopped,'budget_changed'):
+                source.respond('review',self.messages())
+
+    def test_reasoning_over_cap_keeps_usage_and_stops(self):
+        self.use_profile('qwen-review-thinking-v1')
+        with self.gateway(lambda *a:self.response(self.review,output=8203)).session() as source:
+            with self.assertRaisesRegex(BackendStopped,'capacity_estimate_exceeded'):
+                source.respond('review',self.messages())
+            self.assertEqual(source.snapshot()['known_tokens_by_model'][MODELS[0]],8213)
 
     def test_failure_diagnostics_are_fixed_categories_without_secret_messages(self):
         import socket,ssl

@@ -13,6 +13,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from configure_model import CONFIG, MODELS, PRIVATE, private_directory, validate_key
 from model_usage import numeric_usage
+from model_profiles import SUPPORTED_MODELS
 
 PROMPT = '这是接口连通性测试。请只回复：连接成功'
 LEDGER = PRIVATE / 'model-smoke.jsonl'
@@ -30,7 +31,9 @@ def load_config(path=CONFIG):
         raise ValueError('仅允许已核实的百炼北京HTTPS接口')
     if data.get('free_only_user_confirmed') is not True or data.get('paid_calls_authorized') is not False:
         raise ValueError('未确认免费额度保护')
-    if data.get('models') != MODELS:
+    models = data.get('models')
+    if (not isinstance(models, list) or not all(isinstance(m, str) for m in models)
+            or len(models) != len(set(models)) or not set(MODELS) <= set(models) <= set(SUPPORTED_MODELS)):
         raise ValueError('模型范围不匹配')
     return data
 

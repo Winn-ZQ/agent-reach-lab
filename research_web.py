@@ -303,7 +303,7 @@ class TaskStore:
             return {'task':task,'state':state,'case':case,'versions':versions}
 
 
-def make_server(directory=PRIVATE/'web-runs',port=0):
+def make_server(directory=PRIVATE/'web-runs',port=0,execution_policy='preview-v1'):
     # 首次启动没有 .local；只创建任务父目录，不要求先配置模型。
     parent=Path(directory).parent
     if parent.is_symlink():
@@ -312,7 +312,7 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
         private_directory(parent)
     store=TaskStore(directory)
     acquisitions=AcquisitionStore(Path(directory).parent/'web-acquisitions')
-    live=LiveStore(Path(directory).parent/'live-research')
+    live=LiveStore(Path(directory).parent/'live-research',execution_policy=execution_policy)
     dispatch_lock=threading.RLock()
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args): pass
@@ -380,7 +380,7 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
                 if path=='/api/bootstrap':
                     self.send(200,{'csrf':self.server.csrf,'scenarios':store.options(),'live_execution_enabled':False});return
                 if path=='/api/live/bootstrap':
-                    self.send(200,{'csrf':self.server.csrf,'capabilities':live.capabilities(),'budget':live.budget.status()});return
+                    self.send(200,{'csrf':self.server.csrf,'capabilities':live.capabilities(),'budget':live.budget_status()});return
                 if path=='/api/live/tasks':
                     self.send(200,live.listing());return
                 match_live=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})(?:/(report\.md|materials\.csv))?',path)
@@ -499,8 +499,9 @@ def make_server(directory=PRIVATE/'web-runs',port=0):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=0)
+    parser.add_argument('--model-policy',choices=('preview-v1','legacy'),default='preview-v1')
     args=parser.parse_args()
-    with make_server(port=args.port) as server:
+    with make_server(port=args.port,execution_policy=args.model_policy) as server:
         print('资料研究工作台：'+server.origin+server.entry,flush=True)
         print('仅本机监听；新版网页自动研究按免费额度与预算执行，小红书未接入。',flush=True)
         try:server.serve_forever()

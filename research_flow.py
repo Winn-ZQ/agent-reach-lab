@@ -12,6 +12,8 @@ from pathlib import Path
 from model_validation import validate
 from flow_backend import BackendStopped, ResponseBackend, MAX_INPUT_BYTES
 from repair_contract import build_plan, target_map, resolution_evidence, apply_patch as apply_repair_patch, check_repair_review, PATCH_INSTRUCTION, RECHECK_INSTRUCTION
+import evidence_segments
+import compact_review
 
 MAX_RESPONSE_BYTES = 32768
 
@@ -167,9 +169,10 @@ REPAIR = '''逐项处理local_issues、citation_diagnostics和review，但review
 修正后重新逐题检查所有实质断言，不能只改review点名的字词。删除无关未知，避免重复限制。'''
 
 
-def targets(draft):
+def targets(draft, include_limitations=False):
     return {**{'A:' + a['question_id']: a for a in draft['answers']},
-            **{f'H:{i}': h for i, h in enumerate(draft['hypotheses'], 1)}}
+            **{f'H:{i}': h for i, h in enumerate(draft['hypotheses'], 1)},
+            **({f'L:{i}': {'text':v} for i,v in enumerate(draft['limitations'],1)} if include_limitations else {})}
 
 
 def review_instructions(draft, revision_context=None):
@@ -266,13 +269,13 @@ def bind_citation_locations(draft, case):
     return bound, changes
 
 
-def validate_review(review, case, draft, require_grounding=False):
+def validate_review(review, case, draft, require_grounding=False, include_limitations=False):
     try:
         issues = validate(review, case, 'review')
         if issues:
             return issues
         ids = [c.get('target_id') for c in review['checks']]
-        expected = set(targets(draft).keys())
+        expected = set(targets(draft, include_limitations).keys())
         # 一个目标可以拆成多条不同的检查（例如分别检查范围、来源性质和措辞）。
         # 但不能遗漏目标、引入未知目标，或把完全相同的检查重复计数。
         if set(ids) != expected or len(ids) != len(set(ids)) and any(
@@ -351,27 +354,33 @@ class OfflineResponses(ResponseBackend):
         return row['content'] if isinstance(row['content'], str) else encoded(row['content'])
 
 
-def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None, initial_draft=None, initial_review=None):
+def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None, initial_draft=None, initial_review=None,
+        reference_mode='literal'):
     """调度角色与校验；预算、计量和传输由显式backend负责，不自动恢复。"""
     if not isinstance(responses, ResponseBackend):
         raise ValueError('response backend required')
     if type(call_limit) is not int or not 0 <= call_limit <= 5 or max_revisions != 1:
         raise ValueError('invalid limits')
+    if reference_mode not in ('literal', 'segments-v1', compact_review.MODE):
+        raise ValueError('invalid reference mode')
     responses.check_scope(digest(case))
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     case = deepcopy(case)
+    compact = reference_mode == compact_review.MODE
+    segments = evidence_segments.catalog(case) if reference_mode != 'literal' else None
     inherited_review = deepcopy(initial_review)
     revision_context = None
     if inherited_review is not None:
         if (initial_draft is None or inherited_review.get('draft_sha256') != digest(initial_draft)
                 or inherited_review.get('evidence_sha256') != digest(case)
-                or validate_review(inherited_review.get('result'),case,initial_draft)
+                or validate_review(inherited_review.get('result'),case,initial_draft,include_limitations=compact)
                 or inherited_review['result']['verdict'] != 'revise'):
             raise ValueError('invalid inherited review')
         if any(i['action']=='fetch' for i in inherited_review['result']['issues']):
             raise ValueError('inherited review requires new evidence')
     state = {'schema_version': 'research-flow/0.2', 'mode': responses.mode, 'api_calls': 0,
+             'reference_mode': reference_mode,
              'response_provenance': responses.provenance, 'binding_scope': responses.binding_scope,
              'execution_status': 'running', 'review_status': 'not_run', 'stop_reason': None,
              'simulated_calls': 0, 'call_limit': call_limit, 'revision': 0, 'max_revisions': 1,
@@ -402,7 +411,7 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
         event('finished', reason=reason)
         write('result.json', state)
         live = responses.mode == 'live_api'
-        label = ('模型复核通过（非事实正确保证）' if live else '模拟复核通过') if passed else '未通过复核的草稿'
+        label = ('本轮模型复核未发现问题（非事实正确保证）' if live else '模拟复核通过') if passed else '未通过复核的草稿'
         notice = ('**本任务通过模型API运行，资料可能是历史快照或虚构样例，请查看证据说明。**' if live else
                   '**这是回放／模拟执行，不是新的模型调用或真实产品研究。**')
         lines = ['# 研究流程结果' if live else '# 离线流程验证结果', '', notice, '',
@@ -425,6 +434,24 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
         if state['simulated_calls'] + state['api_calls'] + needed > call_limit:
             event('budget_blocked', requested_stage=stage, required_slots=needed)
             return None, 'budget_exhausted'
+        patch_mode = stage == 'repair' and bool(payload.get('repair_plan'))
+        original_payload = payload
+        if segments is not None:
+            payload = deepcopy(payload)
+            shown_case = evidence_segments.present_case(case, segments)
+            if stage == 'analysis':
+                payload = shown_case
+            else:
+                payload['case'] = shown_case
+            if compact and stage == 'review':
+                payload = compact_review.review_payload(original_payload, segments)
+                system = compact_review.REVIEW
+            elif compact and patch_mode:
+                system = compact_review.PATCH
+            else:
+                system += evidence_segments.instructions(stage, patch=patch_mode)
+                if compact:
+                    system += '\n限制说明只写有依据的边界或明确未知，禁止在未知后附加来源外的常识性解释；括号里的事实也需要依据。'
         messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': encoded(payload)}]
         if len(encoded(messages).encode()) > MAX_INPUT_BYTES:
             return None, 'input_size_limit'
@@ -445,10 +472,30 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
         except (ValueError, TypeError, KeyError):
             event('response_invalid', stage=stage)
             return None, 'invalid_response'
+        if segments is not None:
+            try:
+                if compact and stage == 'review':
+                    plan = original_payload.get('revision_context', {}).get('repair_plan')
+                    result, bindings = compact_review.normalize_review(result, case, original_payload['draft'], segments, plan)
+                elif compact and patch_mode:
+                    result, bindings = compact_review.bind_patch(result, case, segments)
+                else:
+                    result, bindings = evidence_segments.bind_response(result, stage, case, segments, patch=patch_mode)
+            except ValueError as exc:
+                event('reference_contract_rejected', stage=stage, code=str(exc))
+                return None, str(exc)
+            write(f'bound-response-{index}.json', result)
+            write(f'reference-bindings-{index}.json', dict(
+                catalog_sha256=evidence_segments.fingerprint(segments),
+                raw_response_sha256=hashlib.sha256(text.encode()).hexdigest(),
+                bound_response_sha256=digest(result), bindings=bindings))
         event('response_received', stage=stage)
         return result, None
 
     write('evidence.json', case)
+    if segments is not None:
+        write('evidence-segments.json', dict(version=evidence_segments.VERSION,
+            evidence_sha256=digest(case), catalog_sha256=evidence_segments.fingerprint(segments), segments=segments))
     event('initialized')
     if initial_draft is None:
         draft, error = request('analysis', case, ANALYZE, reserve_review=True)
@@ -487,14 +534,14 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
         event('draft_checked', issues=issues)
         review = None
         if not issues:
-            payload = {'case': case, 'draft': draft, 'review_targets': targets(draft)}
+            payload = {'case': case, 'draft': draft, 'review_targets': targets(draft, compact)}
             if revision_context:
                 if revision_context.get('repair_plan'):
-                    before=target_map(revision_context['previous_draft']);after=target_map(draft)
+                    before=target_map(revision_context['previous_draft'], compact);after=target_map(draft, compact)
                     try:
                         apply_repair_patch(revision_context['previous_draft'],
                             {'changes':[{'target_id':tid,'replacement':value} for tid,value in after.items()],
-                             'resolutions':revision_context['resolutions']},revision_context['repair_plan'],case)
+                             'resolutions':revision_context['resolutions']},revision_context['repair_plan'],case,include_limitations=compact)
                     except ValueError as exc:return finish(str(exc))
                     revision_context['changes']=[{'target_id':tid,'before':deepcopy(before[tid]),'after':deepcopy(after[tid])}
                         for tid in before if before[tid]!=after.get(tid)]
@@ -512,7 +559,7 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
                 if error:
                     state['review_status'] = 'failed'
                     return finish('review_' + error)
-            issues = validate_review(review, case, draft, require_grounding=not reused and responses.mode == 'live_api')
+            issues = validate_review(review, case, draft, require_grounding=not reused and responses.mode == 'live_api', include_limitations=compact)
             if not issues and revision_context and revision_context.get('repair_plan'):
                 issues += check_repair_review(review,revision_context['repair_plan'],case)
             # 版本绑定由程序写入，不能相信模型自报哈希。
@@ -537,7 +584,7 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
                 if error:
                     state['review_status'] = 'failed'
                     return finish('review_' + error)
-                issues = validate_review(review, case, draft, require_grounding=True)
+                issues = validate_review(review, case, draft, require_grounding=True, include_limitations=compact)
                 if not issues and revision_context and revision_context.get('repair_plan'):
                     issues += check_repair_review(review, revision_context['repair_plan'], case)
                 record = {'revision': n, 'draft_sha256': draft_hash, 'evidence_sha256': state['evidence_sha256'],
@@ -563,11 +610,23 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
             return finish('format_revision_limit')
         repair_input = {'case': case, 'draft': draft, 'local_issues': issues, 'review': review,
                         'citation_diagnostics': citation_diagnostics(draft, case)}
-        try:plan = build_plan(draft,review) if review is not None and responses.mode=='live_api' else None
+        try:plan = build_plan(draft,review,include_limitations=compact) if review is not None and (compact or responses.mode=='live_api') else None
         except ValueError:return finish('repair_target_missing')
         if plan:repair_input['repair_plan']=plan
         repair_system = (SEMANTIC_RULES+'\n'+CONDITION_RULES+'\n'+REPAIR+'\n'+PATCH_INSTRUCTION) if plan else ANALYZE+'\n'+REPAIR
         repaired, error = request('repair', repair_input, repair_system, reserve_review=True)
+        # 片段补丁在进入apply_patch之前也可能格式失败；与已有格式修复共享一次名额。
+        # 不接受伪造/排除/重复编号，不自动转换模型改写的引文，不追加调用上限。
+        if (compact and plan and error in ('segment_ref_schema','segment_refs_schema','compact_patch_schema')
+                and state['format_repairs'] < 1
+                and state['simulated_calls'] + state['api_calls'] + 2 <= call_limit):
+            failed_index=state['simulated_calls']+state['api_calls']
+            invalid_patch=parse((directory/f'response-{failed_index}.txt').read_text())
+            state['format_repairs']+=1
+            event('repair_format_repair',reason=error)
+            retry_input={**repair_input,'invalid_patch':invalid_patch,'patch_error':error,
+                'format_instruction':'重新输出完整补丁。replacement.refs和resolutions.refs均必须是对象数组，每项只包含segment_id，值来自case实际片段编号；不能写裸字符串，也不能复制quote/source_id/locator。保留有依据的修改，不猜测编号。修正后还需独立复核。'}
+            repaired,error=request('repair',retry_input,repair_system,reserve_review=True)
         if error:
             return finish(error)
         patch=None;delta=None
@@ -575,7 +634,9 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
             for patch_attempt in range(2):
                 patch=deepcopy(repaired);write(f'repair-patch-{patch_attempt}.json',patch);write('repair-patch.json',patch)
                 try:
-                    repaired,delta=apply_repair_patch(draft,patch,plan,case)
+                    if segments is not None:
+                        evidence_segments.check_disputed_changes(patch, plan, draft)
+                    repaired,delta=apply_repair_patch(draft,patch,plan,case,include_limitations=compact)
                     break
                 except ValueError as exc:
                     code=str(exc);event('repair_contract_rejected',reason=code)
@@ -593,7 +654,7 @@ def run(case, responses, directory, call_limit=4, max_revisions=1, on_event=None
             state['revision'] += 1
             revision_context = {'previous_draft': deepcopy(draft), 'previous_issues': deepcopy(review['issues']),
                 'instruction': '旧意见可能误判，不是正确性依据。对照原文检查这些问题在当前稿是否仍成立，检查整段分类和因果含义而非仅文字变化；若旧意见无依据不要沿用。'}
-            if plan:revision_context.update(repair_plan=plan,changes=delta,resolutions=resolution_evidence(patch,plan,repaired))
+            if plan:revision_context.update(repair_plan=plan,changes=delta,resolutions=resolution_evidence(patch,plan,repaired,include_limitations=compact))
         draft = repaired
 
 

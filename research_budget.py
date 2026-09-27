@@ -8,10 +8,12 @@ from configure_model import CONFIG, MODELS, private_directory, save_new
 from flow_backend import BackendStopped
 from model_smoke import load_config
 from model_gateway import checked_grant
+from model_profiles import SUPPORTED_MODELS, profile
+from flow_backend import MAX_INPUT_BYTES, TOKEN_OVERHEAD
 
 ROLES = dict(analysis=MODELS[0], repair=MODELS[0], review=MODELS[1])
 DAILY_BASE_CALLS = 12
-DAILY_CALL_LIMIT = 64  # 质量改进阶段：双提示词对照、旧例回归、新题各有界执行；旧账本不变。
+DAILY_CALL_LIMIT = 80  # 思考模式对照阶段最多增加16个名额；旧占用及免费限制保留。
 MAX_TASK_CALLS = 5
 
 
@@ -28,7 +30,7 @@ class WebBudget:
 
     def observe(self, data):
         if (set(data) != {'remaining_tokens', 'stop_when_used_up'} or data['stop_when_used_up'] is not True
-                or set(data['remaining_tokens']) != set(MODELS)
+                or not set(MODELS) <= set(data['remaining_tokens']) <= set(SUPPORTED_MODELS)
                 or any(type(n) is not int or not 0 <= n <= 100000000 for n in data['remaining_tokens'].values())):
             raise ValueError('invalid quota observation')
         temp = self.path.with_suffix('.tmp')
@@ -37,11 +39,18 @@ class WebBudget:
         temp.replace(self.path)
         return self.status()
 
-    def status(self):
+    def status(self, model_profile='legacy', max_input_bytes=None):
+        roles, options = profile(model_profile)
+        if max_input_bytes is not None and (type(max_input_bytes) is not int or not 8192 <= max_input_bytes <= MAX_INPUT_BYTES):
+            raise ValueError('invalid input capacity')
+        minimum_tokens = 300000 if model_profile == 'legacy' else 200000
+        if max_input_bytes is not None:
+            minimum_tokens = max_input_bytes + max(o['max_completion_tokens'] for o in options.values()) + TOKEN_OVERHEAD + 10
         status = {'ready':False, 'reason':'quota_observation_required', 'max_calls_per_task':MAX_TASK_CALLS,
                   'base_calls_per_day':DAILY_BASE_CALLS, 'budget_policy':'bounded_adaptive',
                   'max_calls_per_day':DAILY_CALL_LIMIT, 'token_limit_per_model':300000,
-                  'models':ROLES, 'paid_calls_authorized':False}
+                  'minimum_available_tokens':minimum_tokens,
+                  'models':roles, 'model_profile':model_profile, 'paid_calls_authorized':False}
         try:
             load_config(self.config_path)
         except (ValueError, OSError, TypeError, KeyError):
@@ -56,7 +65,7 @@ class WebBudget:
             remaining=dict(quota['remaining_tokens'])
             for allocation in allocations:
                 if datetime.fromisoformat(allocation['created_at']) >= observed:
-                    for model,n in allocation['charged_tokens'].items(): remaining[model]-=n
+                    for model,n in allocation['charged_tokens'].items(): remaining[model]=remaining.get(model,0)-n
             today=stamp().date().isoformat()
             today_allocations=[a for a in allocations if a['created_at'].startswith(today)]
             # 旧记录没有请求结算时仍保守占用；不凭Token数猜调用次数。
@@ -67,19 +76,20 @@ class WebBudget:
                           current_daily_call_limit=max([DAILY_BASE_CALLS]+[a.get('daily_call_limit',DAILY_BASE_CALLS) for a in today_allocations]),
                           observed_at=quota['observed_at'])
             if calls+2 > DAILY_CALL_LIMIT: status['reason']='daily_call_limit'
-            elif min(remaining.values()) < 300000: status['reason']='free_quota_insufficient'
+            elif min(remaining.get(m,0) for m in roles.values()) < minimum_tokens: status['reason']='free_quota_insufficient'
             else: status.update(ready=True,reason='ready')
         except (OSError, ValueError, KeyError, TypeError):
             pass
         return status
 
-    def issue(self, task_id, case_hash, parent, requested_calls=4, transport_mode='json'):
+    def issue(self, task_id, case_hash, parent, requested_calls=4, transport_mode='json', model_profile='legacy', max_input_bytes=None):
         if type(requested_calls) is not int or not 2 <= requested_calls <= MAX_TASK_CALLS:
             raise ValueError('invalid stage budget')
         if transport_mode not in ('json','sse'): raise ValueError('invalid transport mode')
-        status=self.status()
+        roles, options = profile(model_profile)
+        status=self.status(model_profile, max_input_bytes)
         if not status['ready']: raise BackendStopped(status['reason'])
-        limits={m:300000 for m in MODELS}
+        limits={m:min(300000,status['remaining_tokens'][m]) for m in set(roles.values())}
         now=stamp()
         if status['next_task_max_calls'] < requested_calls:
             raise BackendStopped('daily_call_limit')
@@ -91,14 +101,20 @@ class WebBudget:
                     'task_id':task_id, 'settled':False,
                     'budget_policy':'bounded_adaptive', 'daily_call_limit':daily_limit,
                     'transport_mode':transport_mode,
-                    'adjustment_reason':'按本任务阶段预留完整步骤，基础12、每次增加4、当前质量改进阶段上限64；旧占用保留。'}
+                    'model_profile':model_profile,
+                    'adjustment_reason':'按阶段预留完整步骤，基础12、每次增加4、当前思考模式对照上限80；旧占用保留。'}
         grant={'approved':True,'free_only':True,'paid_calls_authorized':False,
                'grant_id':'web-'+task_id,'case_sha256':case_hash,
                'authorization_note':'用户已授权网页提交研究及合理范围模型调用；仅在已核对免费额度内执行。',
                'parent_run':parent or 'web-task-'+task_id, 'expires_at':(now+timedelta(hours=2)).isoformat(),
-               'max_calls':max_calls,'roles':ROLES,'token_limits':limits,'transport_mode':transport_mode,
+               'max_calls':max_calls,'roles':roles,'token_limits':limits,'transport_mode':transport_mode,
                'free_quota_observation':{m:{'remaining_tokens':status['remaining_tokens'][m],
-                    'stop_when_used_up':True,'observed_at':status['observed_at']} for m in MODELS}}
+                    'stop_when_used_up':True,'observed_at':status['observed_at']} for m in limits}}
+        if model_profile != 'legacy':
+            grant.update(model_profile=model_profile, role_options=options)
+        if max_input_bytes is not None:
+            grant['max_input_bytes'] = max_input_bytes
+            allocation['max_input_bytes'] = max_input_bytes
         # 独占任务锁下先持久占用，崩溃时保守保留，不重复分配。
         save_new(self.root/f'allocation-{task_id}.json',allocation)
         path=self.root/f'grant-{task_id}.json'
@@ -117,7 +133,7 @@ class WebBudget:
         data['charged_calls']=data['max_calls'] if snapshot.get('usage_unknown',True) else calls
         data['settlement_basis']='actual_calls_with_unknown_usage_reservation'
         if not snapshot.get('usage_unknown',True):
-            data['charged_tokens']={m:snapshot.get('known_tokens_by_model',{}).get(m,0) for m in MODELS}
+            data['charged_tokens']={m:snapshot.get('known_tokens_by_model',{}).get(m,0) for m in data['charged_tokens']}
         data['settled']=True
         temp=path.with_suffix('.tmp')
         temp.write_text(json.dumps(data)); os.chmod(temp,0o600); temp.replace(path)

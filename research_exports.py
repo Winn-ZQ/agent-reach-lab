@@ -5,6 +5,9 @@ import io
 from urllib.parse import urlparse
 
 REASONS = {
+    'segment_ref_schema':'模型引用格式无效；原稿及原文已保留',
+    'segment_refs_schema':'模型引用列表格式无效；原稿及原文已保留',
+    'compact_patch_schema':'修正补丁格式无效；原稿及原文已保留',
     'repair_target_unchanged':'修正模型声称已处理问题，但对应正文未改变',
     'repair_target_missing':'旧复核缺少具体目标，需要重新核查',
     'repair_issue_coverage':'修正未逐条回应复核问题',
@@ -17,7 +20,7 @@ REASONS = {
     'transport_or_usage_error': '模型请求未返回可用响应或用量',
     'review_transport_or_usage_error': '最终复核请求未返回可用响应，修正稿尚未通过复核',
     'format_revision_limit': '草稿校验仍未通过，已达到本地修正上限',
-    'review_passed': '检查与复核通过', 'invalid_review': '复核结果不符合要求',
+    'review_passed': '本轮模型复核未发现问题；关键结论仍需对照来源核实', 'invalid_review': '复核结果不符合要求',
     'budget_exhausted': '剩余名额不足以完成修正和复核', 'revision_limit': '已达到一次修正上限',
     'needs_sources': '需要补充来源', 'no_change': '修正稿没有变化',
     'review_invalid_response': '复核返回的内容无法解析', 'invalid_response': '分析返回的内容无法解析',
@@ -40,7 +43,7 @@ def review_label(task, state):
         return '处理中 · 尚未完成'
     if not state.get('final_draft'):
         return '尚无有效报告 · 尚未完成复核'
-    return ('模型复核通过（非事实正确保证）' if task.get('mode')=='live_api' else '模拟复核通过') if state.get('review_status') == 'passed' else '未通过复核的草稿'
+    return ('本轮模型复核未发现问题（非事实正确保证）' if task.get('mode')=='live_api' else '模拟复核通过') if state.get('review_status') == 'passed' else '未通过复核的草稿'
 
 
 def csv_safe(value):
@@ -66,6 +69,9 @@ def rows(detail):
         result.append({**common,'record_type':'hypothesis','id':f'H{i}','status':'待验证',
                        'text':h['text'],'source_ids':' | '.join(h['source_ids']),
                        'alternative':h['alternative'],'next_action':h['next_action']})
+    for i,text in enumerate(draft.get('limitations', []),1):
+        result.append({**common,'record_type':'limitation','id':f'L:{i}',
+                       'status':'报告限制说明','text':text})
     for s in case['sources']:
         result.append({**common,'record_type':'source','id':s['source_id'],
                        'status':'纳入' if s.get('included') is True else '排除' if s.get('included') is False else '参考来源',

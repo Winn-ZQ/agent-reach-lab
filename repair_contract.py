@@ -18,12 +18,13 @@ RECHECK_INSTRUCTION = '''revision_context含repair_plan和程序生成的changes
 逐项确认原问题已消除，或原意见确实不成立；不能因文字变了或修正者自称已解决就判resolved=true。
 必须给原文依据。任何resolved=false都必须verdict=revise，并在issues中关联原目标。'''
 
-def target_map(draft):
+def target_map(draft, include_limitations=False):
     return {**{'A:'+a['question_id']:a for a in draft['answers']},
-            **{'H:'+str(i):h for i,h in enumerate(draft['hypotheses'],1)}}
+            **{'H:'+str(i):h for i,h in enumerate(draft['hypotheses'],1)},
+            **({'L:'+str(i):{'text':v} for i,v in enumerate(draft['limitations'],1)} if include_limitations else {})}
 
-def build_plan(draft, review):
-    targets=target_map(draft);result=[]
+def build_plan(draft, review, include_limitations=False):
+    targets=target_map(draft, include_limitations);result=[]
     for i,issue in enumerate(review['issues'],1):
         tid=issue.get('target_id')
         if tid not in targets:raise ValueError('repair_target_missing')
@@ -50,10 +51,10 @@ def unique_rows(rows, key, expected):
     if len(ids)!=len(set(ids)) or set(ids)!=set(expected):raise ValueError('repair_issue_coverage')
     return {r[key]:r for r in rows}
 
-def apply_patch(draft, patch, plan, case):
+def apply_patch(draft, patch, plan, case, include_limitations=False):
     if not isinstance(patch,dict) or set(patch)-{'changes','resolutions','limitations'}:
         raise ValueError('repair_patch_schema')
-    old=target_map(draft);changes=patch.get('changes')
+    old=target_map(draft, include_limitations);changes=patch.get('changes')
     if not isinstance(changes,list) or any(not isinstance(c,dict) or not isinstance(c.get('target_id'),str) for c in changes):
         raise ValueError('repair_patch_schema')
     ids=[c['target_id'] for c in changes]
@@ -64,6 +65,8 @@ def apply_patch(draft, patch, plan, case):
         if not isinstance(replacement,dict) or tid.startswith('A:') and replacement.get('question_id')!=tid[2:]:
             raise ValueError('repair_patch_identity')
         if not isinstance(replacement.get('text'),str) or not replacement['text'].strip():raise ValueError('repair_patch_text')
+        if include_limitations and tid.startswith('L:') and set(replacement) != {'text'}:
+            raise ValueError('repair_limitation_schema')
         new[tid]=deepcopy(replacement)
     receipts=unique_rows(patch.get('resolutions'),'issue_id',[p['issue_id'] for p in plan])
     for problem in plan:
@@ -78,13 +81,16 @@ def apply_patch(draft, patch, plan, case):
     result=deepcopy(draft)
     result['answers']=[new['A:'+a['question_id']] for a in draft['answers']]
     result['hypotheses']=[new['H:'+str(i)] for i in range(1,len(draft['hypotheses'])+1)]
-    if 'limitations' in patch:result['limitations']=deepcopy(patch['limitations'])
+    if include_limitations:
+        if 'limitations' in patch:raise ValueError('repair_limitations_overwrite')
+        result['limitations']=[new['L:'+str(i)]['text'] for i in range(1,len(draft['limitations'])+1)]
+    elif 'limitations' in patch:result['limitations']=deepcopy(patch['limitations'])
     delta=[{'target_id':tid,'before':deepcopy(old[tid]),'after':deepcopy(new[tid])} for tid in ids]
     return result,delta
 
-def resolution_evidence(patch, plan, draft):
+def resolution_evidence(patch, plan, draft, include_limitations=False):
     """标明依据来自模型回执还是已校验的替换回答，不改写原模型补丁。"""
-    targets=target_map(draft);by_id={p['issue_id']:p['target_id'] for p in plan}
+    targets=target_map(draft, include_limitations);by_id={p['issue_id']:p['target_id'] for p in plan}
     receipts=deepcopy(patch['resolutions'])
     for receipt in receipts:
         fallback=receipt['resolution']=='changed' and receipt['refs']==[]

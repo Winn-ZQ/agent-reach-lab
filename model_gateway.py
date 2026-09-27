@@ -19,6 +19,8 @@ from flow_backend import (BackendStopped, ResponseBackend, MAX_INPUT_BYTES,
                           MAX_OUTPUT_TOKENS, TOKEN_OVERHEAD, REVIEW_CAPACITY)
 from model_smoke import append_event, load_config, transport
 from model_usage import numeric_usage
+from model_profiles import SUPPORTED_MODELS, role_options, output_capacity, request_options
+from evidence_segments import recover_case
 
 GRANT = PRIVATE / 'research-budget.json'
 LEDGERS = PRIVATE / 'research-budgets'
@@ -60,10 +62,15 @@ def checked_grant(path, case_hash, now=None):
             raise ValueError()
         if data.get('transport_mode','json') not in ('json','sse'):
             raise ValueError()
+        input_limit = data.get('max_input_bytes', MAX_INPUT_BYTES)
+        if type(input_limit) is not int or not 8192 <= input_limit <= MAX_INPUT_BYTES:
+            raise ValueError()
         if set(data['roles']) != {'analysis', 'review', 'repair'}:
             raise ValueError()
-        if any(m not in MODELS for m in data['roles'].values()):
+        if any(m not in SUPPORTED_MODELS for m in data['roles'].values()):
             raise ValueError()
+        for stage in data['roles']:
+            role_options(data, stage)
         models = set(data['roles'].values())
         if set(data['token_limits']) != models or set(data['free_quota_observation']) != models:
             raise ValueError()
@@ -129,7 +136,7 @@ class ModelResponses(ResponseBackend):
         starts = [e for e in events if e.get('event') == 'started']
         ends = [e for e in events if e.get('event') == 'finished']
         usage = {m: sum(e['usage']['total_tokens'] for e in ends if e.get('model') == m and e.get('usage'))
-                 for m in MODELS}
+                 for m in dict.fromkeys([*MODELS, *(self.grant['roles'].values() if self.grant else [])])}
         return {'api_calls': len(starts) if self.mode == 'live_api' else 0,
                 'simulated_calls': len(starts) if self.mode == 'mock_api' else 0,
                 'known_tokens_by_model': usage,
@@ -190,6 +197,8 @@ class ModelResponses(ResponseBackend):
                 raise ValueError()
             payload = json.loads(messages[1]['content'])
             task = payload.get('case', payload)
+            if 'reference_contract' in task:
+                task = recover_case(task)
             task_hash = hashlib.sha256(json.dumps(task, ensure_ascii=False, sort_keys=True, indent=2).encode()).hexdigest()
             if task_hash != self.case_hash:
                 raise ValueError()
@@ -207,13 +216,15 @@ class ModelResponses(ResponseBackend):
             raise BackendStopped('call_budget_exhausted')
         model = self.grant['roles'][stage]
         input_bytes = len(encoded(messages).encode())
-        if input_bytes > MAX_INPUT_BYTES:
+        input_limit = self.grant.get('max_input_bytes', MAX_INPUT_BYTES)
+        if input_bytes > input_limit:
             raise BackendStopped('input_size_limit')
-        capacity = input_bytes + MAX_OUTPUT_TOKENS + TOKEN_OVERHEAD
+        options = role_options(self.grant, stage)
+        capacity = input_bytes + output_capacity(self.grant, stage) + TOKEN_OVERHEAD
         reserves = {model: capacity}
         if reserve_review:
             reviewer = self.grant['roles']['review']
-            reserves[reviewer] = reserves.get(reviewer, 0) + REVIEW_CAPACITY
+            reserves[reviewer] = reserves.get(reviewer, 0) + input_limit + output_capacity(self.grant, 'review') + TOKEN_OVERHEAD
         used = self.snapshot()['known_tokens_by_model']
         if any(used[m] + value > self.grant['token_limits'][m] for m, value in reserves.items()):
             raise BackendStopped('token_budget_exhausted')
@@ -222,13 +233,13 @@ class ModelResponses(ResponseBackend):
             config = load_config(self.config_path)
         except (ValueError, OSError, TypeError, KeyError):
             raise BackendStopped('model_configuration_invalid') from None
-        body = {'model': model, 'messages': messages, 'enable_thinking': False,
-                'stream': self.grant.get('transport_mode','json') == 'sse', 'max_tokens': MAX_OUTPUT_TOKENS}
+        if model not in config['models']:
+            raise BackendStopped('model_not_configured')
+        body = {'model': model, 'messages': messages, **request_options(self.grant, stage),
+                'stream': self.grant.get('transport_mode','json') == 'sse'}
         if body['stream']:
             body['stream_options']={'include_usage':True}
-        if model == 'qwen3.8-flash':
-            body['response_format'] = {'type': 'json_object'}
-        # DeepSeek的JSON模式未实测，不擅自假设可用；仍做本地严格校验。
+        # JSON模式由版本化配置明确选择，所有配置仍执行相同的本地严格校验。
         if config['api_key'] in encoded(body):
             raise BackendStopped('credential_in_request')
         attempt = len(starts) + 1
@@ -236,6 +247,7 @@ class ModelResponses(ResponseBackend):
         (self.directory/f'request-{attempt}.json').write_text(request_text)
         append_event(self.directory/'events.jsonl', {'event': 'started', 'attempt': attempt, 'model': model,
                      'stage': stage, 'request_sha256': sha(body), 'reserved_capacity': reserves,
+                     'role_options': options, 'model_profile': self.grant.get('model_profile', 'legacy'),
                      'at': datetime.now(timezone.utc).isoformat()})
         outcome = {'event': 'finished', 'attempt': attempt, 'stage': stage, 'model': model,
                    'status': 'failed', 'usage': None, 'billing': 'free_expected_not_verified'}
@@ -243,14 +255,14 @@ class ModelResponses(ResponseBackend):
         content = None
         try:
             response = (self.send(config, body) if self.send else
-                        transport(config, body, timeout=90, response_limit=524288,
+                        transport(config, body, timeout=options['timeout_seconds'], response_limit=1048576,
                                   audit=lambda value: outcome.update(http_diagnostic=value)))
             # 在校验前保留脱敏响应，避免异常时丢失供应商返回的计量。
             text = encoded(response).replace(config['api_key'], '[redacted]')
             (self.directory/f'response-{attempt}.json').write_text(text)
             outcome['usage'] = numeric_usage(response.get('usage'))
             if (outcome['usage']['prompt_tokens'] > input_bytes + TOKEN_OVERHEAD
-                    or outcome['usage']['completion_tokens'] > MAX_OUTPUT_TOKENS):
+                    or outcome['usage']['completion_tokens'] > output_capacity(self.grant, stage)):
                 raise BackendStopped('capacity_estimate_exceeded')
             choice = response['choices'][0]
             if choice.get('finish_reason') != 'stop':

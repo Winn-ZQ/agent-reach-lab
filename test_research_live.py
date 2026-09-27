@@ -19,6 +19,17 @@ from research_web import make_server
 
 
 class LiveTests(unittest.TestCase):
+    def test_small_task_capacity_does_not_reset_quota(self):
+        self.observation['remaining_tokens'] = {m:90000 for m in MODELS}
+        self.budget.observe(self.observation)
+        self.assertFalse(self.budget.status('qwen-review-thinking-json-v2')['ready'])
+        self.assertTrue(self.budget.status('qwen-review-thinking-json-v2', 50000)['ready'])
+        path = self.budget.issue('small-cap', 'a'*64, 'test', model_profile='qwen-review-thinking-json-v2', max_input_bytes=50000)
+        self.assertEqual(json.loads(path.read_text())['max_input_bytes'], 50000)
+        self.assertFalse(self.budget.status('qwen-review-thinking-json-v2', 50000)['ready'])
+        self.budget.settle('small-cap', dict(api_calls=2, usage_unknown=False, known_tokens_by_model={MODELS[0]:10000}))
+        self.assertEqual(self.budget.status('qwen-review-thinking-json-v2', 50000)['remaining_tokens'][MODELS[0]], 80000)
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
@@ -30,7 +41,7 @@ class LiveTests(unittest.TestCase):
         self.search=Mock(side_effect=self.search_result)
         self.collect=Mock(side_effect=self.source)
         self.sent=[]
-        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,
+        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,execution_policy='legacy',
             backend_factory=lambda path,sha:ModelResponses(path,sha,self.root/'ledgers',self.config,send=self.send),budget=self.budget)
 
     def search_result(self,query,objective,**kw):
@@ -58,6 +69,114 @@ class LiveTests(unittest.TestCase):
     def payload(self,letter='a',**kw):
         return {'question':'训练计划功能','region':'','period':'','sources':['web'],'required_sources':['web'],
                 'request_id':letter*32,'parent_task_id':None,**kw}
+
+    def preview_send(self, config, body, repair=False):
+        self.sent.append(body)
+        payload=json.loads(body['messages'][1]['content']);case=payload.get('case',payload)
+        sid=case['sources'][0]['segments'][0]['segment_id']
+        self.assertEqual(body['model'],'qwen3.8-flash')
+        self.assertTrue(body['stream'])
+        if 'repair_plan' in payload:
+            content={'changes':[{'target_id':'L:1','replacement':{'text':'来源未说明未来收费。'}}],
+                     'resolutions':[{'issue_id':'I1','resolution':'changed','reason':'删除无依据承诺。','refs':[{'segment_id':sid}]}]}
+        elif 'review_targets' in payload:
+            self.assertTrue(body['enable_thinking'])
+            content={'checks':[{'target_id':k,'supported':not(repair and k=='L:1' and 'revision_context' not in payload),
+                'reason':'来源未承诺永久政策。' if k=='L:1' else '原文支持。','evidence_ids':[sid]} for k in payload['review_targets']]}
+            if payload.get('revision_context'):
+                content['repair_checks']=[{'issue_id':p['issue_id'],'resolved':True,'reason':'已删除无依据内容。','evidence_ids':[sid]} for p in payload['revision_context']['repair_plan']]
+        else:
+            self.assertFalse(body['enable_thinking'])
+            content={'answers':[{'question_id':q,'status':'answered','text':'可调整每周训练日。','refs':[{'segment_id':sid}]} for q in case['questions']],
+                     'hypotheses':[],'limitations':['永久免费。' if repair else '仅核对所给资料。']}
+        return {'choices':[{'message':{'content':json.dumps(content,ensure_ascii=False)},'finish_reason':'stop'}],
+                'usage':{'prompt_tokens':20,'completion_tokens':20,'total_tokens':40}}
+
+    def use_preview(self,repair=False):
+        self.store.execution_policy='preview-v1'
+        self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,
+            send=lambda c,b:self.preview_send(c,b,repair))
+
+    def test_preview_policy_flow_and_export_labels(self):
+        self.use_preview();self.budget.observe(self.observation)
+        result=self.wait(self.store.start(self.payload()))
+        self.assertEqual(result['state']['review_status'],'passed')
+        self.assertEqual(result['state']['reference_mode'],'compact-v2')
+        self.assertEqual(result['task']['execution_policy'],'preview-v1')
+        self.assertEqual(len(self.sent),2)
+        self.assertEqual(self.store.budget_status()['models']['review'],'qwen3.8-flash')
+        self.assertIn('本轮模型复核未发现问题',export_markdown(result))
+        self.assertIn('limitation',export_csv(result))
+        self.assertEqual(self.budget.status()['remaining_tokens'][MODELS[1]],1000000)
+
+    def test_preview_limitation_repair_is_four_calls_and_retains_versions(self):
+        self.use_preview(repair=True);self.budget.observe(self.observation)
+        result=self.wait(self.store.start(self.payload()))
+        self.assertEqual(result['state']['review_status'],'passed',result['state']['stop_reason'])
+        self.assertEqual(result['state']['simulated_calls'],4)
+        self.assertEqual(len(result['state']['versions']),2)
+        self.assertEqual(result['state']['final_draft']['limitations'],['来源未说明未来收费。'])
+
+    def test_preview_patch_format_repair_is_bounded_and_keeps_recheck_slot(self):
+        self.use_preview(repair=True);self.budget.observe(self.observation)
+        def malformed_once(c,b):
+            response=self.preview_send(c,b,True)
+            if len(self.sent)==3:
+                raw=json.loads(response['choices'][0]['message']['content'])
+                raw['resolutions'][0]['refs']=[raw['resolutions'][0]['refs'][0]['segment_id']]
+                response['choices'][0]['message']['content']=json.dumps(raw)
+            return response
+        self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=malformed_once)
+        result=self.wait(self.store.start(self.payload()))
+        self.assertEqual(result['state']['review_status'],'passed',result['state']['stop_reason'])
+        self.assertEqual(result['state']['simulated_calls'],5)
+        self.assertEqual(result['state']['format_repairs'],1)
+        correction=json.loads(self.sent[3]['messages'][1]['content'])
+        self.assertEqual(correction['patch_error'],'segment_ref_schema')
+        self.assertIn('invalid_patch',correction)
+
+    def test_preview_patch_format_failure_never_exceeds_five_calls(self):
+        self.use_preview(repair=True);self.budget.observe(self.observation)
+        def malformed(c,b):
+            response=self.preview_send(c,b,True)
+            raw=json.loads(response['choices'][0]['message']['content'])
+            if 'resolutions' in raw:
+                raw['resolutions'][0]['refs']=['fake']
+                response['choices'][0]['message']['content']=json.dumps(raw)
+            return response
+        self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=malformed)
+        result=self.wait(self.store.start(self.payload()))
+        self.assertEqual(result['state']['stop_reason'],'segment_ref_schema')
+        self.assertEqual(result['state']['simulated_calls'],4)
+        self.assertNotEqual(result['state']['review_status'],'passed')
+
+    def test_preview_insufficient_quota_and_missing_platform_do_not_call_models(self):
+        self.use_preview();self.observation['remaining_tokens']={m:100 for m in MODELS}
+        self.budget.observe(self.observation)
+        task=self.store.start(self.payload());result=self.wait(task)
+        self.assertEqual(result['task']['reason'],'free_quota_insufficient');self.assertFalse(self.sent)
+        self.assertTrue(result['case']['sources'])
+        self.observation['remaining_tokens']={m:1000000 for m in MODELS};self.budget.observe(self.observation)
+        self.store.resume(task['id']);result=self.wait(task)
+        self.assertEqual(result['state']['review_status'],'passed');self.search.assert_called_once()
+        count=len(self.sent)
+        result=self.wait(self.store.start(self.payload(letter='b',sources=['web','xhs'],required_sources=['xhs'])))
+        self.assertEqual(result['task']['reason'],'required_source_unavailable')
+        self.assertEqual(len(self.sent),count)
+
+    def test_waiting_legacy_task_without_policy_remains_legacy_after_default_change(self):
+        task=self.store.start(self.payload());self.wait(task)
+        self.store.tasks[task['id']].pop('execution_policy')
+        from research_live import save
+        path=self.store.directory/task['id']/'task.json';save(path,self.store.tasks[task['id']])
+        before=path.read_bytes()
+        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,budget=self.budget,
+            backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=self.send))
+        self.assertEqual(path.read_bytes(),before)
+        self.budget.observe(self.observation);self.store.resume(task['id']);result=self.wait(task)
+        self.assertEqual(result['state']['reference_mode'],'literal')
+        self.assertEqual([r['model'] for r in self.sent],list(MODELS))
+        self.search.assert_called_once()
 
     def wait(self,task):
         deadline=time.monotonic()+5
@@ -215,7 +334,7 @@ class LiveTests(unittest.TestCase):
             response['choices'][0]['message']['content']=json.dumps(content);return response
         self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=parent_send)
         original_issue=self.budget.issue
-        self.budget.issue=lambda tid,h,p,requested_calls=4:original_issue(tid,h,p,requested_calls=min(4,requested_calls))
+        self.budget.issue=lambda tid,h,p,requested_calls=4,**kw:original_issue(tid,h,p,requested_calls=min(4,requested_calls),**kw)
         parent=self.store.start(self.payload());result=self.wait(parent)
         self.assertEqual(result['state']['stop_reason'],'budget_exhausted')
         def child_send(config,body):
@@ -279,6 +398,24 @@ class LiveTests(unittest.TestCase):
         result=self.wait(self.store.start(self.payload()))
         self.assertEqual(result['task']['reason'],'quota_observation_stale'); self.assertFalse(self.sent)
 
+    def test_candidate_profile_binds_roles_and_settles_selected_models(self):
+        self.budget.observe(self.observation)
+        path=self.budget.issue('p'*32,'a'*64,None,requested_calls=2,model_profile='qwen-review-thinking-v1')
+        grant=json.loads(path.read_text())
+        self.assertEqual(set(grant['roles'].values()),{'qwen3.8-flash'})
+        self.assertTrue(grant['role_options']['review']['enable_thinking'])
+        self.assertFalse(grant['role_options']['analysis']['enable_thinking'])
+        self.budget.settle('p'*32,{'api_calls':1,'usage_unknown':False,
+                                'known_tokens_by_model':{'qwen3.8-flash':5000}})
+        saved=json.loads((self.budget.root/('allocation-'+'p'*32+'.json')).read_text())
+        self.assertEqual(saved['charged_tokens'],{'qwen3.8-flash':5000})
+        self.assertEqual(self.budget.status()['remaining_tokens']['deepseek-v4.1-flash'],1000000)
+        self.assertEqual(self.budget.status('max-review-thinking-v1')['reason'],'free_quota_insufficient')
+        self.observation['remaining_tokens']={m:250000 for m in MODELS}
+        self.budget.observe(self.observation)
+        path=self.budget.issue('q'*32,'a'*64,None,requested_calls=2,model_profile='qwen-review-thinking-v1')
+        self.assertEqual(json.loads(path.read_text())['token_limits'],{'qwen3.8-flash':250000})
+
     def test_connection_recovery_preserves_unknown_budget_and_cannot_repeat(self):
         self.budget.observe(self.observation)
         def parent_send(config,body):
@@ -289,7 +426,7 @@ class LiveTests(unittest.TestCase):
             response['choices'][0]['message']['content']=json.dumps(content);return response
         self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=parent_send)
         original_issue=self.budget.issue
-        self.budget.issue=lambda tid,h,p,requested_calls=4:original_issue(tid,h,p,requested_calls=min(4,requested_calls))
+        self.budget.issue=lambda tid,h,p,requested_calls=4,**kw:original_issue(tid,h,p,requested_calls=min(4,requested_calls),**kw)
         parent=self.store.start(self.payload());self.wait(parent)
         def broken(*args):raise OSError('never expose this secret')
         self.store.backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=broken)

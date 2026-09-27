@@ -28,6 +28,16 @@ class StreamTests(unittest.TestCase):
         self.assertTrue(audit[-1]['stream_complete'])
         self.assertNotIn('测试',json.dumps(audit,ensure_ascii=False))
 
+    def test_thinking_stream_counts_usage_without_rendering_reasoning(self):
+        chunks=self.chunks()
+        chunks.insert(0,{'choices':[{'index':0,'delta':{'reasoning_content':'private reasoning'}}]})
+        chunks[-1]['usage'].update(prompt_tokens=10,completion_tokens=1002,total_tokens=1012,
+                                  completion_tokens_details={'reasoning_tokens':1000})
+        result=self.read(chunks)
+        self.assertEqual(result['choices'][0]['message']['content'],'测试')
+        self.assertNotIn('private reasoning',json.dumps(result))
+        self.assertEqual(result['usage']['completion_tokens_details']['reasoning_tokens'],1000)
+
     def test_partial_missing_usage_or_finish_and_duplicate_usage_fail_closed(self):
         chunks=self.chunks()
         for events,done in [(chunks,False),(chunks[:-1],True),(chunks[:2]+chunks[3:],True),(chunks+[chunks[-1]],True)]:
