@@ -95,6 +95,8 @@ def prepare_case(raw, run_date):
             raise ValueError('missing web context')
         case['web_context'] = deepcopy(raw['web_context'])
         case['data_provenance'] = '本机保存的公开网页正文；以各来源采集时间为准，未核实地区、发布日期及适用条件。'
+    elif case['kind'] == 'collected_xhs':
+        case['data_provenance'] = '本机实际采集的小红书笔记标题与正文；用户陈述不等于产品事实。未分析图片、视频和评论，样本不能代表总体口碑。'
     return case
 
 
