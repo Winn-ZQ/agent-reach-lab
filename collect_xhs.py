@@ -150,6 +150,17 @@ def normalize_note(payload, candidate, sid, fetched_at):
 
 
 def collect(topic, output, client=call_tool):
+    try:
+        return _collect(topic, output, client)
+    except XhsError as exc:
+        path = Path(output) / 'status.json'
+        if path.parent.is_dir() and not path.exists():
+            save_new(path, {'status':'stopped', 'reason':str(exc), 'api_calls':0,
+                            'note':'已保存的搜索和正文保留；未自动重新查询。'})
+        raise
+
+
+def _collect(topic, output, client):
     sampling = plan(topic)
     output = Path(output)
     if output.exists():
@@ -162,12 +173,54 @@ def collect(topic, output, client=call_tool):
     groups = []
     sampling['search_records'] = []
     for i, query in enumerate(sampling['queries'], 1):
+        save_new(output / f'search-attempt-{i}.json', {'query':query,
+                 'filters':sampling['filters'], 'started_at':now()})
         payload = client('search_feeds', {'keyword': query, 'filters': sampling['filters']})
         save_new(output / f'search-{i}.json', payload)
         sampling['search_records'].append({'query': query, 'returned_at': now(),
             'requested_filters': sampling['filters'], 'response_sha256': digest(payload),
             'filter_verification': '已向后端传参；未独立核验平台实际排序和筛选'})
         groups.append(candidates(payload, query))
+    return _finish_collection(topic, output, client, sampling, groups)
+
+
+def collect_saved_searches(topic, output, searches, *, client=call_tool, selected_ids=None, selection_note=None):
+    """复用已取得的真实搜索响应，只读取正文；查询与人工选样决定均保留。"""
+    sampling = plan(topic)
+    if not isinstance(searches, list) or not 1 <= len(searches) <= 3:
+        raise ValueError('invalid saved search count')
+    output = Path(output)
+    if output.exists(): raise ValueError('output exists')
+    groups, records = [], []
+    for item in searches:
+        query = item['query']
+        if not isinstance(query,str) or not 1 <= len(query) <= 100: raise ValueError('invalid query')
+        groups.append(candidates(item['payload'],query))
+        records.append({'query':query, 'requested_filters':item['filters'],
+            'returned_at':item['returned_at'], 'response_sha256':digest(item['payload']),
+            'filter_verification':'复用已保存响应；未重新搜索或独立核验筛选'})
+    if selected_ids is not None:
+        known={c['note_id'] for group in groups for c in group}
+        if (not isinstance(selected_ids,list) or not 1 <= len(selected_ids) <= 4
+                or len(set(selected_ids)) != len(selected_ids) or not set(selected_ids) <= known
+                or not isinstance(selection_note,str) or not selection_note.strip()):
+            raise ValueError('invalid explicit selection')
+        groups=[[next(c for g in groups for c in g if c['note_id']==sid) for sid in selected_ids]]
+        sampling['selection'] = selection_note
+    sampling.update(queries=[x['query'] for x in searches], search_records=records,
+                    filters='以每次搜索记录为准',
+                    bias='复用便利样本；不代表总体口碑，不代表正负反馈的自然分布。')
+    private_directory(output)
+    save_new(output/'sampling.json', sampling)
+    for i,item in enumerate(searches,1):save_new(output/f'search-{i}.json',item['payload'])
+    try:
+        return _finish_collection(topic, output, client, sampling, groups)
+    except XhsError as exc:
+        save_new(output/'status.json', {'status':'stopped','reason':str(exc),'api_calls':0})
+        raise
+
+
+def _finish_collection(topic, output, client, sampling, groups):
     selected, seen = [], set()
     for i in range(max(map(len, groups), default=0)):
         for group in groups:

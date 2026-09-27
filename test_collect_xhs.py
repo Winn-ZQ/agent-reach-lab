@@ -4,8 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from collect_xhs import XhsError, call_tool, collect, normalize_note, plan, verify_package
+from collect_xhs import XhsError, call_tool, collect, collect_saved_searches, normalize_note, plan, verify_package
 from research_flow import prepare_case
+from research_exports import export_csv, export_markdown
 
 
 def wrap(data):
@@ -65,6 +66,31 @@ class XhsTests(unittest.TestCase):
         self.assertEqual(self.calls, ['check_login_status'])
         self.assertFalse((self.output / 'analysis-input.json').exists())
 
+    def test_reuse_saved_search_does_not_repeat_login_or_search(self):
+        payload = self.client('search_feeds',{'keyword':'Keep App 使用体验'})
+        self.calls.clear()
+        package=collect_saved_searches('Keep App',self.output,[{'query':'Keep','payload':payload,
+            'filters':{},'returned_at':'2026-09-27T08:00:00Z'}],client=self.client,
+            selected_ids=[note_id(2)],selection_note='人工按标题选择，范围已披露')
+        self.assertEqual([n for n,a in self.calls],['get_feed_detail'])
+        self.assertEqual(package['case']['sampling']['queries'],['Keep'])
+        self.assertIn('人工',package['case']['sampling']['selection'])
+        self.assertEqual(verify_package(self.output)['sources'][0]['note_id'],note_id(2))
+
+    def test_exports_keep_sampling_without_claiming_web_or_review_success(self):
+        package = collect('Keep App', self.output, self.client)
+        case = prepare_case(package['case'], package['run_date'])
+        detail = {'task': {'id':'fixture', 'mode':'live_api', 'status':'stopped',
+                  'input':{'region':'', 'period':''}}, 'case':case,
+                  'state': {'api_calls':0, 'final_draft':None, 'review_status':'not_run'}}
+        md, csv = export_markdown(detail), export_csv(detail)
+        self.assertIn('纳入 4 条笔记，来自 1 名已知作者', md)
+        self.assertIn('Keep App 使用问题', md)
+        self.assertIn('sampling_count', csv)
+        self.assertIn('尚无有效报告', md)
+        self.assertNotIn('公开网页来源', md)
+        self.assertNotIn('fixture-access-only', csv)
+
     def test_failed_source_preserves_earlier_and_stops_requests(self):
         def client(name, args):
             if name == 'get_feed_detail' and args['feed_id'] == note_id(2):
@@ -74,6 +100,18 @@ class XhsTests(unittest.TestCase):
         self.assertEqual(len(package['case']['sources']), 1)
         self.assertEqual(package['case']['sampling']['failures'][0]['reason'], 'source_request_failed')
         self.assertEqual(sum(n == 'get_feed_detail' for n, _ in self.calls), 1)
+
+    def test_failed_second_search_keeps_first_and_records_stop(self):
+        def client(name, args):
+            if name == 'search_feeds' and args['keyword'].endswith('问题'):
+                raise XhsError('source_timeout')
+            return self.client(name, args)
+        with self.assertRaisesRegex(XhsError, 'source_timeout'):
+            collect('Keep App', self.output, client)
+        self.assertTrue((self.output / 'search-1.json').exists())
+        self.assertTrue((self.output / 'search-attempt-2.json').exists())
+        self.assertEqual(json.loads((self.output / 'status.json').read_text())['reason'], 'source_timeout')
+        self.assertFalse((self.output / 'analysis-input.json').exists())
 
     def test_mismatched_note_never_becomes_evidence(self):
         payload = wrap({'data': {'note': {'noteId': note_id(2), 'desc': '正文'}}})

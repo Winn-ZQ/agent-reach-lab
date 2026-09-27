@@ -2,6 +2,7 @@
 import csv
 import html
 import io
+import json
 from urllib.parse import urlparse
 
 REASONS = {
@@ -30,7 +31,8 @@ REASONS = {
 
 def disclosure(detail):
     if detail['task'].get('mode')=='live_api':
-        return '真实网页研究任务；是否已调用模型以调用记录为准。'+detail['case'].get('data_provenance','尚未取得有效证据。')
+        label = '真实小红书笔记研究任务' if detail['case'].get('kind') == 'collected_xhs' else '真实网页研究任务'
+        return label+'；是否已调用模型以调用记录为准。'+detail['case'].get('data_provenance','尚未取得有效证据。')
     return '离线回放：资料为虚构案例，没有进行实时搜索或新的模型调用。'
 
 
@@ -78,6 +80,13 @@ def rows(detail):
                        'url':s.get('url',''),'fetched_at':s.get('fetched_at',''),'text':s.get('title',''),'source_ids':s['source_id'],'quotes':s.get('quote') or '',
                        'author':s.get('author') or '', 'published_at':s.get('published_at') or '',
                        'exclusion_reason':s.get('exclusion_reason') or ''})
+    if case.get('kind') == 'collected_xhs':
+        for key, value in case.get('sampling_protocol', {}).items():
+            result.append({**common, 'record_type':'sampling', 'id':key, 'status':'采样记录',
+                           'text':json.dumps(value,ensure_ascii=False)})
+        for key, value in case.get('sampling_facts', {}).items():
+            result.append({**common, 'record_type':'sampling_count', 'id':key, 'status':'程序统计',
+                           'text':json.dumps(value,ensure_ascii=False)})
     return result
 
 
@@ -106,9 +115,14 @@ def export_markdown(detail):
     lines += [f"纳入 {facts['included_notes']} 条笔记，来自 {facts['known_unique_authors']} 名已知作者；作者未知笔记 {facts['unknown_author_notes']} 条。",'',
               '同作者分组：'+safe('；'.join('、'.join(g) for g in facts['same_author_groups']) or '无'),'',
               '笔记数不等于用户数；样本不能推断总体发生率。','']
-    if task.get('mode')=='live_api':
+    if task.get('mode')=='live_api' and case.get('kind') != 'collected_xhs':
         start=lines.index('## 样本范围')
         lines=lines[:start]+['## 研究范围','', '公开网页来源：'+str(len(case['sources']))+'；地区：'+safe(task['input']['region'] or '不限')+'；时间：'+safe(task['input']['period'] or '不限'),'', 'API调用：'+str(state.get('api_calls',0))+'；已知用量：'+safe(state.get('known_tokens_by_model',{})), '', '未取得来源：'+safe('、'.join(task.get('skipped_sources',[])+task.get('missing_sources',[])) or '无额外平台缺失记录'), '']
+    if case.get('kind') == 'collected_xhs':
+        lines += ['API调用：'+str(state.get('api_calls',0)), '', '### 采样记录', '']
+        for key, value in case.get('sampling_protocol', {}).items():
+            lines += ['- '+safe(key)+'：'+safe(json.dumps(value,ensure_ascii=False))]
+        lines += ['']
     for answer in draft.get('answers',[]):
         lines += ['## '+safe(answer['question_id'])+' · '+('明确未知' if answer['status']=='unknown' else '回答'),'',safe(answer['text']),'']
         for ref in answer.get('refs',[]):

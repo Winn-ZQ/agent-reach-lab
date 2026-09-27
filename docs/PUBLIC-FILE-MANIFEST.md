@@ -13,6 +13,9 @@ WORKFLOW.md
 PRODUCT-NEXT.md
 web/
 research_acquisition.py
+collect_xhs.py
+analyze_xhs.py
+xhs_login.py
 research_evidence.py
 research_exports.py
 research_flow.py
