@@ -6,6 +6,16 @@ import json
 from urllib.parse import urlparse
 
 REASONS = {
+    'xhs_login_required':'小红书需要本机登录；登录后可继续当前任务',
+    'xhs_backend_unavailable':'小红书后端未正常返回；已有记录保留',
+    'xhs_backend_not_configured':'小红书后端尚未配置',
+    'xhs_source_timeout':'小红书请求超时，已停止追加读取',
+    'xhs_source_request_failed':'小红书请求失败，已有记录保留',
+    'xhs_no_valid_notes':'未取得可用笔记正文，不代表没有用户反馈',
+    'xhs_scope_not_supported':'当前仅支持不限地区与时间的笔记标题和正文',
+    'xhs_topic_required':'请提供不超过80字的简短检索主题',
+    'mixed_sources_not_supported':'网页与小红书混合研究尚未接入，请本次选择一个来源',
+    'xhs_login_retry_limit':'本任务已达到三次登录检查上限',
     'segment_ref_schema':'模型引用格式无效；原稿及原文已保留',
     'segment_refs_schema':'模型引用列表格式无效；原稿及原文已保留',
     'compact_patch_schema':'修正补丁格式无效；原稿及原文已保留',

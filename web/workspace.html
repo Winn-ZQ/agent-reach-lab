@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>资料助手 · 本机研究</title><link rel="stylesheet" href="/workspace.css"><script defer src="/workspace.js"></script></head>
 <body>
-<header class="demo-bar"><div class="demo-label"><span class="demo-dot"></span><b>网页研究预览版 · 本机运行</b><span>方案 A · 对话与报告</span></div><span id="connection" class="budget-summary">正在连接本机服务…</span></header>
+<header class="demo-bar"><div class="demo-label"><span class="demo-dot"></span><b>资料研究预览版 · 本机运行</b><span>方案 A · 对话与报告</span></div><span id="connection" class="budget-summary">正在连接本机服务…</span></header>
 <div id="error" role="alert" class="error-banner" hidden></div>
 <div class="workspace"><aside class="sidebar"><div class="brand"><span class="brand-mark">↗</span><span>资料助手<small>RESEARCH WORKSPACE</small></span></div><button id="new-task" class="new-button"><span>＋</span> 新建研究</button><div class="nav-label">研究历史</div><div id="history-list" class="history-list"></div><div class="sidebar-bottom"><button id="source-center">◉ 来源中心</button><button id="settings">⚙ 运行设置</button><button id="legacy">↗ 旧版工作台</button><div class="local-mode">仅本机 · 凭据不传前端</div></div></aside><main id="main"></main></div>
 <dialog id="evidence" class="evidence-dialog"><button class="close-button" data-close>关闭 ×</button><div id="evidence-content"></div></dialog>
-<dialog id="picker" class="picker-dialog"><button class="close-button" data-close>关闭 ×</button><h2>本次资料来源</h2><p class="dialog-hint">指定的平台若为必需，无法获取时任务暂停。当前仅公开网页可执行。</p><div id="picker-options" class="picker-options"></div><div class="picker-footer"><span>不会自动搜索全部平台</span><button id="apply-sources" class="solid">使用此范围</button></div></dialog>
+<dialog id="picker" class="picker-dialog"><button class="close-button" data-close>关闭 ×</button><h2>本次资料来源</h2><p class="dialog-hint">指定的平台若为必需，无法获取时任务暂停。公开网页与已配置的小红书可分别执行；混合研究及评论读取尚未接入。</p><div id="picker-options" class="picker-options"></div><div class="picker-footer"><span>不会自动搜索全部平台</span><button id="apply-sources" class="solid">使用此范围</button></div></dialog>
 </body></html>

@@ -41,7 +41,7 @@ class LiveTests(unittest.TestCase):
         self.search=Mock(side_effect=self.search_result)
         self.collect=Mock(side_effect=self.source)
         self.sent=[]
-        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,execution_policy='legacy',
+        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,execution_policy='legacy',xhs_enabled=False,
             backend_factory=lambda path,sha:ModelResponses(path,sha,self.root/'ledgers',self.config,send=self.send),budget=self.budget)
 
     def search_result(self,query,objective,**kw):
@@ -170,7 +170,7 @@ class LiveTests(unittest.TestCase):
         from research_live import save
         path=self.store.directory/task['id']/'task.json';save(path,self.store.tasks[task['id']])
         before=path.read_bytes()
-        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,budget=self.budget,
+        self.store=LiveStore(self.root/'live',search=self.search,collector=self.collect,budget=self.budget,xhs_enabled=False,
             backend_factory=lambda p,h:ModelResponses(p,h,self.root/'ledgers',self.config,send=self.send))
         self.assertEqual(path.read_bytes(),before)
         self.budget.observe(self.observation);self.store.resume(task['id']);result=self.wait(task)

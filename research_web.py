@@ -380,7 +380,7 @@ def make_server(directory=PRIVATE/'web-runs',port=0,execution_policy='preview-v1
                 if path=='/api/bootstrap':
                     self.send(200,{'csrf':self.server.csrf,'scenarios':store.options(),'live_execution_enabled':False});return
                 if path=='/api/live/bootstrap':
-                    self.send(200,{'csrf':self.server.csrf,'capabilities':live.capabilities(),'budget':live.budget_status()});return
+                    self.send(200,{'csrf':self.server.csrf,'capabilities':live.capabilities(),'xhs_samples':live.xhs_samples(),'budget':live.budget_status()});return
                 if path=='/api/live/tasks':
                     self.send(200,live.listing());return
                 match_live=re.fullmatch(r'/api/live/tasks/([a-f0-9]{32})(?:/(report\.md|materials\.csv))?',path)
@@ -500,9 +500,13 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=0)
     parser.add_argument('--model-policy',choices=('preview-v1','legacy'),default='preview-v1')
+    parser.add_argument('--xhs-sample',help='登记已经保存的小红书证据目录，不重新采集')
+    parser.add_argument('--xhs-sample-title',default='已保存的小红书样本')
     args=parser.parse_args()
     with make_server(port=args.port,execution_policy=args.model_policy) as server:
+        if args.xhs_sample:
+            server.live.register_xhs_sample(args.xhs_sample,args.xhs_sample_title)
         print('资料研究工作台：'+server.origin+server.entry,flush=True)
-        print('仅本机监听；新版网页自动研究按免费额度与预算执行，小红书未接入。',flush=True)
+        print('仅本机监听；研究按免费额度与预算执行；公开网页与已配置小红书可分别使用。',flush=True)
         try:server.serve_forever()
         except KeyboardInterrupt:pass

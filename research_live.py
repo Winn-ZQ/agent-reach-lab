@@ -14,7 +14,10 @@ from flow_backend import BackendStopped, ResponseBackend
 from model_gateway import ModelResponses
 from research_acquisition import search_public_web, collect_candidates, SearchError
 from research_budget import WebBudget
-from research_evidence import build_evidence, verify_package
+from research_evidence import build_evidence, verify_package as verify_web_package
+from collect_xhs import (CONFIG as XHS_CONFIG, XhsError, collect as collect_xhs,
+                         call_tool as xhs_call, copy_package as copy_xhs_package,
+                         verify_package as verify_xhs_package)
 from research_flow import digest, encoded, parse, run
 from evidence_segments import catalog, present_case
 
@@ -44,6 +47,12 @@ CATALOG = [
 def now(): return datetime.now(timezone.utc).isoformat()
 
 
+def verify_package(directory, package):
+    if package.get('schema_version') == 'xhs-evidence/0.1':
+        return verify_xhs_package(directory)
+    return verify_web_package(directory, package)
+
+
 def save(path,data):
     temp=path.with_suffix('.tmp')
     temp.write_text(encoded(data)); temp.chmod(0o600); temp.replace(path)
@@ -63,12 +72,16 @@ class GuardedResponses(ResponseBackend):
 
 
 class LiveStore:
-    def __init__(self,directory,search=None,collector=None,backend_factory=None,budget=None,execution_policy='preview-v1'):
+    def __init__(self,directory,search=None,collector=None,backend_factory=None,budget=None,execution_policy='preview-v1',xhs_enabled=None,xhs_client=None):
         if execution_policy not in POLICIES: raise ValueError('unknown execution policy')
         self.execution_policy=execution_policy
         self.directory=Path(directory); private_directory(self.directory)
         self.lock=threading.RLock(); self.active=None; self.tasks={}; self.cancel_flags={}
         self.search=search or search_public_web; self.collector=collector
+        self.xhs_enabled = XHS_CONFIG.is_file() if xhs_enabled is None else xhs_enabled
+        self.xhs_client = xhs_client or xhs_call
+        self.samples_path = self.directory/'xhs-samples.json'
+        self.samples = parse(self.samples_path.read_text()) if self.samples_path.exists() else {}
         self.backend_factory=backend_factory or ModelResponses
         self.budget=budget or WebBudget(self.directory.parent/'web-budget')
         for path in self.directory.glob('*/task.json'):
@@ -82,8 +95,22 @@ class LiveStore:
             except (ValueError,OSError,KeyError,TypeError): pass
 
     def capabilities(self):
-        return [{'id':i,'name':n,'group':g,'operations':[{'name':o,'status':'configured_not_checked' if i=='web' else 'not_connected'} for o in ops],
-                 'executable':i=='web'} for i,n,g,ops in CATALOG]
+        return [{'id':i,'name':n,'group':g,'operations':[{'name':o,'status':'configured_not_checked'
+                 if i=='web' or (i=='xhs' and self.xhs_enabled and o!='读取评论') else 'not_connected'} for o in ops],
+                 'executable':i=='web' or (i=='xhs' and self.xhs_enabled)} for i,n,g,ops in CATALOG]
+
+    def register_xhs_sample(self, source, title):
+        """本机管理操作；HTTP只接收已登记ID，不接受任意文件路径。"""
+        case = verify_xhs_package(source)
+        key = digest(case)[:32]
+        with self.lock:
+            self.samples[key] = {'path':str(Path(source).resolve()), 'title':title,
+                                 'case_sha256':digest(case), 'notes':len(case['sources'])}
+            save(self.samples_path,self.samples)
+        return key
+
+    def xhs_samples(self):
+        return [{'id':k,'title':v['title'],'notes':v['notes']} for k,v in self.samples.items()]
 
     def budget_status(self):
         policy=POLICIES[self.execution_policy]
@@ -120,7 +147,11 @@ class LiveStore:
                 fcntl.flock(fd,fcntl.LOCK_UN); os.close(fd)
 
     def start(self,data, retry_from=None, continuation_kind=None):
-        if not isinstance(data,dict) or set(data)!={'question','region','period','sources','required_sources','request_id','parent_task_id'}: raise ValueError('fields')
+        required={'question','region','period','sources','required_sources','request_id','parent_task_id'}
+        if not isinstance(data,dict) or not required <= set(data) <= required|{'xhs_sample_id'}: raise ValueError('fields')
+        sample_id=data.get('xhs_sample_id')
+        if sample_id is not None and (not isinstance(sample_id,str) or sample_id not in self.samples or data['sources']!=['xhs']):
+            raise ValueError('unknown saved sample')
         for key,maximum in [('question',600),('region',80),('period',80)]:
             if not isinstance(data[key],str) or len(data[key])>maximum: raise ValueError('length')
         if not data['question'].strip() or not re.fullmatch(r'[a-f0-9-]{32,36}',data['request_id']): raise ValueError('request')
@@ -145,7 +176,7 @@ class LiveStore:
                       'execution_policy':self.tasks[retry_from].get('execution_policy','legacy') if retry_from else self.execution_policy,
                       'question':data['question'],'mode':'live_api','created_at':now(),'updated_at':now(),
                       'status':'running','stage':'scope','reason':None,'events':[],
-                      'limits':{'max_sources':3,'max_model_calls':3 if continuation_kind == 'review_recheck' else 2 if continuation_kind in ('review_revision','transport_recovery') else 5,'max_revisions':1,'active_seconds':600},
+                      'limits':{'max_sources':4 if data['sources']==['xhs'] else 3,'max_model_calls':3 if continuation_kind == 'review_recheck' else 2 if continuation_kind in ('review_revision','transport_recovery') else 5,'max_revisions':1,'active_seconds':600},
                       'skipped_sources':[], 'retry_from':retry_from, 'continuation_kind':continuation_kind}
                 self.tasks[tid]=task; save(directory/'task.json',task)
             except Exception: os.close(fd); raise
@@ -237,7 +268,7 @@ class LiveStore:
         with self.lock:
             task=self.tasks[tid]
             if self.active==tid: return deepcopy(task)
-            if task['status']!='waiting_user' or task['reason'] not in ('quota_observation_required','quota_observation_stale','free_quota_insufficient','daily_call_limit','model_configuration_invalid'): raise ValueError('cannot resume')
+            if task['status']!='waiting_user' or task['reason'] not in ('quota_observation_required','quota_observation_stale','free_quota_insufficient','daily_call_limit','model_configuration_invalid','xhs_login_required'): raise ValueError('cannot resume')
             fd=self._acquire(); self.active=tid; self.cancel_flags[tid]=threading.Event()
             self._update(tid,status='running',reason=None)
             threading.Thread(target=self._work,args=(tid,fd),daemon=True).start()
@@ -255,15 +286,24 @@ class LiveStore:
             self._update(tid,stage=stage)
         try:
             task=self.tasks[tid]; scope=task['input']
-            missing=[s for s in scope['required_sources'] if s!='web']
+            available={'web'} | ({'xhs'} if self.xhs_enabled else set())
+            missing=[s for s in scope['required_sources'] if s not in available]
             # 当前只自动匹配公开网页；明确出现的平台需求不能被静默降级。
             for sid,name,_,_ in CATALOG:
                 if sid!='web' and name.lower() in scope['question'].lower() and sid not in scope['sources']: missing.append(sid)
             if missing:
                 self._update(tid,status='waiting_user',reason='required_source_unavailable',missing_sources=missing); return
-            skipped=[s for s in scope['sources'] if s!='web']
+            selected=set(scope['sources']) & available
+            if selected=={'web','xhs'}:
+                self._update(tid,status='waiting_user',reason='mixed_sources_not_supported'); return
+            xhs = selected == {'xhs'}
+            if xhs and (scope['region'] or scope['period'] or re.search(r'评论|图片|视频',scope['question'])):
+                self._update(tid,status='waiting_user',reason='xhs_scope_not_supported'); return
+            if xhs and not scope.get('xhs_sample_id') and len(scope['question'].strip())>80:
+                self._update(tid,status='waiting_user',reason='xhs_topic_required'); return
+            skipped=[s for s in scope['sources'] if s not in available]
             self._update(tid,skipped_sources=skipped)
-            if 'web' not in scope['sources']: raise BackendStopped('no_available_source')
+            if not selected: raise BackendStopped('no_available_source')
             check()
             package_path=directory/'analysis-input.json'
             initial_draft=None;initial_review=None
@@ -279,16 +319,39 @@ class LiveStore:
                     raise ValueError('snapshot changed')
                 if not package_path.exists():
                     # 仅复制已校验的固定来源快照；不复制旧稿的通过状态或预算。
-                    (directory/'sources').mkdir(mode=0o700)
-                    for filename in ('run.json','search.json'):
-                        save(directory/filename,parse((parent_dir/filename).read_text()))
-                    for filename in ['manifest.json']+[f'source-{c["rank"]}.json' for c in parse((parent_dir/'search.json').read_text())['results']]:
-                        src=parent_dir/'sources'/filename
-                        if src.exists():
-                            if src.is_symlink(): raise ValueError('linked source')
-                            save(directory/'sources'/filename,parse(src.read_text()))
-                    save(package_path,parent_package)
+                    if parent_case['kind']=='collected_xhs':
+                        copy_xhs_package(parent_dir,directory)
+                    else:
+                        (directory/'sources').mkdir(mode=0o700)
+                        for filename in ('run.json','search.json'):
+                            save(directory/filename,parse((parent_dir/filename).read_text()))
+                        for filename in ['manifest.json']+[f'source-{c["rank"]}.json' for c in parse((parent_dir/'search.json').read_text())['results']]:
+                            src=parent_dir/'sources'/filename
+                            if src.exists():
+                                if src.is_symlink(): raise ValueError('linked source')
+                                save(directory/'sources'/filename,parse(src.read_text()))
+                        save(package_path,parent_package)
                 self._event(tid,'prepare','沿用父任务已校验证据与草稿'+('及复核意见' if initial_review else '')+'；不重新搜索，新任务独立记账')
+            if not package_path.exists() and xhs:
+                sample_id=scope.get('xhs_sample_id')
+                if sample_id:
+                    sample=self.samples[sample_id]
+                    if digest(verify_xhs_package(sample['path']))!=sample['case_sha256']:
+                        raise ValueError('saved sample changed')
+                    self._event(tid,'prepare','复用已保存的小红书样本；不重新搜索，保留原采集时间与选样限制')
+                    copy_xhs_package(sample['path'],directory,scope['question'])
+                    self._update(tid,saved_sample_title=sample['title'])
+                else:
+                    attempt=1+len(list(directory.glob('xhs-attempt-*')))
+                    if attempt>3: raise BackendStopped('xhs_login_retry_limit')
+                    target=directory/f'xhs-attempt-{attempt}'
+                    def client(name,args):
+                        check()
+                        self._event(tid,'search' if name in ('check_login_status','search_feeds') else 'collect',
+                                    '检查小红书登录' if name=='check_login_status' else '搜索笔记候选' if name=='search_feeds' else '读取笔记标题和正文')
+                        result=self.xhs_client(name,args);check();return result
+                    collect_xhs(scope['question'],target,client)
+                    copy_xhs_package(target,directory,scope['question'])
             if not package_path.exists():
                 self._event(tid,'search','搜索最多 3 个公开网页候选')
                 query=' '.join(filter(None,[scope['question'],scope['region'],scope['period']]))[:600]
@@ -325,6 +388,9 @@ class LiveStore:
         except BackendStopped as exc:
             waiting=exc.code in ('quota_observation_required','quota_observation_stale','free_quota_insufficient','daily_call_limit','model_configuration_invalid')
             self._update(tid,status='cancelled' if exc.code=='cancelled' else 'waiting_user' if waiting else 'stopped',reason=exc.code)
+        except XhsError as exc:
+            code='xhs_'+str(exc)
+            self._update(tid,status='waiting_user' if str(exc)=='login_required' else 'stopped',reason=code)
         except SearchError as exc:
             self._update(tid,status='failed',reason='search_'+exc.kind)
         except ValueError:
@@ -344,6 +410,8 @@ class LiveStore:
             task=deepcopy(self.tasks[tid]); directory=self.directory/tid
             state={'events':[],'versions':[],'reviews':[],'api_calls':0,'review_status':'not_run','final_draft':None}
             case={'task':task['question'],'sources':[],'questions':{}}
+            if task['input']['sources']==['xhs']:
+                case.update(kind='collected_xhs',data_provenance='尚未取得本任务可用的小红书笔记证据。')
             path=directory/'analysis-input.json'
             if path.exists(): case=verify_package(directory,parse(path.read_text()))
             path=directory/'flow/state.json'

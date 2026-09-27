@@ -1,5 +1,6 @@
 """小红书只读采集入口；复用 Agent-Reach 推荐的 MCP 后端，不调用模型。"""
 import argparse
+from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -10,7 +11,7 @@ import subprocess
 
 from configure_model import private_directory, save_new
 from research_acquisition import node_path
-from research_evidence import MAX_CASE_BYTES, question_checklist
+from research_evidence import MAX_CASE_BYTES
 from research_flow import digest, encoded, prepare_case
 
 ROOT = Path(__file__).resolve().parent
@@ -249,7 +250,7 @@ def _finish_collection(topic, output, client, sampling, groups):
     if not sources:
         raise XhsError('no_valid_notes')
     question = f'根据本次小红书笔记样本，整理{topic}的体验反馈、证据局限和待验证的产品改进假设。仅描述本次样本，不推断市场占比。'
-    raw = {'kind': 'collected_xhs', 'task': question, 'questions': question_checklist(question),
+    raw = {'kind': 'collected_xhs', 'task': question, 'questions': {'Q1': question},
            'sources': sources, 'sampling': sampling}
     run_date = datetime.now(timezone.utc).date().isoformat()
     case = prepare_case(raw, run_date)
@@ -284,6 +285,29 @@ def verify_package(directory):
     if digest(case) != package['case_sha256']:
         raise ValueError('evidence changed')
     return case
+
+
+def copy_package(source, destination, question=None):
+    """复制校验过的证据；新研究可绑定完整问题，旧包和正文不变。"""
+    source, destination = Path(source), Path(destination)
+    original = verify_package(source)
+    if (destination/'analysis-input.json').exists():
+        raise ValueError('evidence already exists')
+    package = json.loads((source/'analysis-input.json').read_text())
+    if question is not None:
+        if not isinstance(question, str) or not 1 <= len(question.strip()) <= 600:
+            raise ValueError('invalid research question')
+        raw = deepcopy(package['case'])
+        raw.update(task=question, questions={'Q1': question})
+        raw['sampling']['reused_from_sha256'] = digest(original)
+        package['case'] = raw
+        package['case_sha256'] = digest(prepare_case(raw, package['run_date']))
+    private_directory(destination)
+    for s in package['case']['sources']:
+        save_new(destination/f'source-{s["source_id"][1:]}.json', s)
+    save_new(destination/'sampling-result.json', package['case']['sampling'])
+    save_new(destination/'analysis-input.json', package)
+    return package
 
 
 if __name__ == '__main__':
